@@ -18,6 +18,14 @@ from homeassistant.loader import async_get_integration
 
 from .const import (
     CONF_ADMIN_ONLY,
+    CONF_CURVE_FLOW_COLD,
+    CONF_CURVE_FLOW_WARM,
+    CONF_CURVE_MID,
+    CONF_CURVE_MID_FLOW,
+    CONF_CURVE_MID_OUT,
+    CONF_CURVE_OUT_COLD,
+    CONF_CURVE_OUT_WARM,
+    CONF_CURVE_SHIFT,
     CONF_ICON,
     CONF_OVERRIDES,
     CONF_PREFIX,
@@ -62,6 +70,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "klep_aan_is_tapwater": bool(_opt(entry, CONF_VALVE_DHW)),
         "thema": _opt(entry, CONF_THEME),
         "overrides": _opt(entry, CONF_OVERRIDES) or {},
+        "stooklijn": {
+            "koud": [float(_opt(entry, CONF_CURVE_OUT_COLD)), float(_opt(entry, CONF_CURVE_FLOW_COLD))],
+            "warm": [float(_opt(entry, CONF_CURVE_OUT_WARM)), float(_opt(entry, CONF_CURVE_FLOW_WARM))],
+            "midden": [float(_opt(entry, CONF_CURVE_MID_OUT)), float(_opt(entry, CONF_CURVE_MID_FLOW))]
+            if _opt(entry, CONF_CURVE_MID) else None,
+            "verschuiving": float(_opt(entry, CONF_CURVE_SHIFT)),
+        },
     }
     url_path = _opt(entry, CONF_URL_PATH)
 

@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.3.1";
+const ECODASH_VERSION = "1.4.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -55,6 +55,25 @@ const P_RUN = 150;
 // en het vat in rust ook langzaam afkoelt.
 const TAP_DROP = 1.0;         // °C afkoeling van het vat ...
 const TAP_WIN = 15 * 60e3;    // ... binnen dit venster
+
+// Stooklijn zoals op het Ecodan-display: [buitentemperatuur, aanvoertemperatuur] per punt. Komt uit Configureren,
+// want MELCloud geeft de instelling niet door.
+const DEFAULT_CURVE = { koud: [-7, 32], warm: [12, 24], midden: null, verschuiving: 0 };
+function curvePoints(c) {
+  const ok = p => Array.isArray(p) && p.length === 2 && p.every(v => isFinite(v));
+  if (!c || !ok(c.koud) || !ok(c.warm) || c.koud[0] >= c.warm[0]) c = DEFAULT_CURVE;
+  const shift = +c.verschuiving || 0;
+  const pts = [c.koud, ok(c.midden) && c.midden[0] > c.koud[0] && c.midden[0] < c.warm[0] ? c.midden : null, c.warm]
+    .filter(Boolean).map(([t, v]) => [+t, +v + shift]);
+  return { pts, shift, raw: c };
+}
+// vlak tot het koude punt, rechte stukken tussen de punten, vlak vanaf het warme punt
+function curveAt(curve, t) {
+  const p = curve.pts;
+  if (t <= p[0][0]) return p[0][1];
+  for (let i = 1; i < p.length; i++) if (t <= p[i][0]) return p[i - 1][1] + (p[i][1] - p[i - 1][1]) * (t - p[i - 1][0]) / (p[i][0] - p[i - 1][0]);
+  return p[p.length - 1][1];
+}
 
 const slug = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
@@ -139,6 +158,35 @@ const hhmm = t => new Date(t).toLocaleTimeString("nl-NL", { hour: "2-digit", min
 const dagTijd = t => new Date(t).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 /* ------------------------- SVG-schema ------------------------------ */
+// grafiek van de stooklijn: buiten −30…+35 °C (zoals het display) en aanvoer 20…60 °C
+const CV = { x0: 660, x1: 1150, y0: 980, t0: -30, t1: 35 };
+const cvx = t => CV.x0 + (clamp(t, CV.t0, CV.t1) - CV.t0) / (CV.t1 - CV.t0) * (CV.x1 - CV.x0);
+const cvy = v => CV.y0 - (clamp(v, 20, 60) - 20) * 3;
+function curveSvg(curve) {
+  const f = (v) => fmt(v, 0), c = curve.raw;
+  const lbl = `koud ${f(c.koud[0])} → ${f(c.koud[1])} °C` + (curve.pts.length === 3 ? ` · midden ${f(c.midden[0])} → ${f(c.midden[1])} °C` : "")
+    + ` · warm ${f(c.warm[0])} → ${f(c.warm[1])} °C` + (curve.shift ? ` · verschoven ${curve.shift > 0 ? "+" : ""}${f(curve.shift)} °C` : "");
+  let s = `<rect class="zone" x="600" y="820" width="584" height="184" rx="8"/>
+  <g class="comp" id="curvegrp" data-c="curve" data-also="th7" tabindex="0" role="button" aria-label="Stooklijn">
+    <rect class="hit" x="600" y="820" width="584" height="184"/>
+    <text class="zlabel" x="616" y="846">STOOKLIJN</text>
+    <text class="t s" x="1168" y="846" text-anchor="end">${lbl}</text>`;
+  for (let v = 20; v <= 60; v += 10)
+    s += `<line class="cgrid" x1="${CV.x0}" x2="${CV.x1}" y1="${cvy(v)}" y2="${cvy(v)}"/>` + (v % 20 ? "" : `<text class="t s" x="${CV.x0 - 6}" y="${cvy(v) + 3.5}" text-anchor="end">${v}°</text>`);
+  for (let t = -30; t <= 30; t += 10)
+    s += `<line class="caxis" x1="${cvx(t)}" x2="${cvx(t)}" y1="${CV.y0}" y2="${CV.y0 + 4}"/><text class="t s" x="${cvx(t)}" y="${CV.y0 + 15}" text-anchor="middle">${fmt(t, 0)}</text>`;
+  s += `<text class="t s" x="1168" y="${CV.y0 + 15}" text-anchor="end">buiten</text>
+    <line class="caxis" x1="${CV.x0}" y1="${CV.y0}" x2="${CV.x1}" y2="${CV.y0}"/><line class="caxis" x1="${CV.x0}" y1="860" x2="${CV.x0}" y2="${CV.y0}"/>`;
+  const line = [[CV.t0, curve.pts[0][1]], ...curve.pts, [CV.t1, curve.pts[curve.pts.length - 1][1]]];
+  s += `<polyline class="curve" points="${line.map(([t, v]) => cvx(t).toFixed(1) + "," + cvy(v).toFixed(1)).join(" ")}"/>`;
+  curve.pts.forEach(([t, v]) => { s += `<circle class="cpt" cx="${cvx(t).toFixed(1)}" cy="${cvy(v).toFixed(1)}" r="3"/>`; });
+  s += `<line class="cnow" id="c-now" x1="-50" x2="-50" y1="${CV.y0}" y2="${CV.y0}"/>
+    <circle class="cdot" id="c-dot" r="5" cx="-50" cy="-50"/><circle class="cflow" id="c-flow" r="4.5" cx="-50" cy="-50"/>
+    <text class="val" id="c-txt" x="676" y="874"></text><text class="t s" id="c-txt2" x="676" y="890"></text>
+  </g>`;
+  return s;
+}
+
 // pipe(): de leiding zelf plus een stroom-overlay (bolletjes) die alleen zichtbaar is als de groep actief is.
 // De tekenrichting van elk pad is de stroomrichting.
 const pipe = (d, col, g, thin = false) =>
@@ -188,9 +236,9 @@ function floorsSvg(floors) {
   return s;
 }
 
-function schemaSvg(floors) {
+function schemaSvg(floors, curve) {
   return `
-<svg class="schema" id="schema" viewBox="0 0 1200 920" role="img" aria-label="Schema van de Ecodan-installatie met buitenunit, cilinderunit en vloerverwarming">
+<svg class="schema" id="schema" viewBox="0 0 1200 1012" role="img" aria-label="Schema van de Ecodan-installatie met buitenunit, cilinderunit en vloerverwarming">
   <rect class="zone" x="16" y="16" width="290" height="384" rx="8"/>
   <rect class="zone" x="16" y="416" width="290" height="388" rx="8"/>
   <rect class="zone" x="320" y="16" width="460" height="788" rx="8"/>
@@ -380,7 +428,7 @@ function schemaSvg(floors) {
     <text class="t s" x="32" y="790">koeling · 2-wegklep · BH2 · BH2+ · pomp 3 en 4</text>
   </g>
 
-  <rect class="zone" x="16" y="820" width="1168" height="84" rx="8"/>
+  <rect class="zone" x="16" y="820" width="574" height="184" rx="8"/>
   <text class="zlabel" x="32" y="846">METERKAST</text>
   <g class="comp" data-c="meterOut" tabindex="0" role="button" aria-label="kWh-meter buitenunit">
     ${pwr("M313,850 V300 H280", "eout")}
@@ -396,9 +444,10 @@ function schemaSvg(floors) {
     <text class="val" id="v-pin" x="393" y="887"></text>
     <text class="t s" id="v-ein" x="495" y="887" text-anchor="end"></text>
   </g>
-  <text class="t s" x="530" y="864">Echte stroommeting in de meterkast, los van de schattingen in MELCloud.</text>
-  <text class="t s" id="v-meter1" x="530" y="880"></text>
-  <text class="t s" id="v-meter2" x="530" y="896"></text>
+  <text class="t s" x="32" y="926">Echte stroommeting in de meterkast, los van de schattingen in MELCloud.</text>
+  <text class="t s" id="v-meter1" x="32" y="944"></text>
+  <text class="t s" id="v-meter2" x="32" y="962"></text>
+  ${curveSvg(curve)}
 
   <g id="floors">${floorsSvg(floors)}</g>
 </svg>`;
@@ -427,6 +476,7 @@ const C = {
   act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' bovenop de verdeler die een lus open of dicht zetten. Ze worden aangestuurd door de thermostaat van de kamer. Niet zichtbaar in MELCloud." },
   tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat opent de kranen van zijn eigen kamer. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt is daardoor niet te zien. Het panel leidt de warmtevraag af uit de warmtepomp: draait die op ruimteverwarming, dan vraagt minstens één thermostaat warmte en kleurt het signaal naar de FTC6 rood." },
   unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een hybride cv-ketel, een mengvat met extra zonepomp en meer. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat MELCloud ze altijd meestuurt. Voelers zonder sensor geven een vaste 25,0 °C." },
+  curve: { name: "Stooklijn (compensatiecurve)", where: "Instelling in de FTC6", text: "Met Operation mode Curve bepaalt de FTC6 de aanvoertemperatuur uit de buitentemperatuur (TH7): hoe kouder buiten, hoe warmer het water naar de vloeren. Tot en met het koude punt geldt de hoogste aanvoer, vanaf het warme punt de laagste, en daartussen loopt de lijn recht (via het aanpassingspunt als dat is ingesteld). De groene stip is de huidige buitentemperatuur op de lijn: de aanvoer waar de FTC6 nu op mikt. De rode stip is de werkelijke aanvoer (THW1) zodra de vloerverwarming draait. De punten komen niet uit MELCloud maar uit Configureren; pas ze daar aan als je de stooklijn op het Ecodan-display verandert." },
   zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. In Home Assistant maakt MELCloud daar een apart apparaat voor ('Ecodan Huis'). Het apparaat 'Ecodan' is de unit zelf met het tapwater." },
   absent: { name: "Uitgeschakelde entiteiten", where: "Komen niet voor in jouw installatie", text: "De MELCloud-integratie maakt voor elke uitgang van de FTC6 een entiteit aan, ook voor functies die jouw installatie niet heeft: koelen, een tweede booster-trap, extra zones en een los tapwatervat. Home Assistant heeft deze standaard uitgeschakeld en dat kan zo blijven." },
   meterOut: { name: "kWh-meter buitenunit", where: "Meterkast", text: "Meet het werkelijke stroomverbruik van de groep naar de buitenunit: compressor en ventilator. Bij de gebruikelijke Ecodan-bedrading krijgt de cilinderunit zijn regelstroom (FTC6, wifi, pomp 1, 3-wegklep) via de buitenunit, dus dan telt dat verbruik hier mee. Dit is de meting om op te vertrouwen; de 'consumed'-waarden in MELCloud zijn schattingen van de FTC6. Boven 30 W lopen er gele bolletjes over de stroomkabel." },
@@ -488,7 +538,7 @@ const G = [
       now: X => X.demand == null ? "" : X.demand >= 100 ? "100 %: geen begrenzing." : `Begrensd op ${fmt(X.demand, 0)} %.` },
     { k: "wifi", n: "Signaalsterkte", c: "ftc", x: "Wifi-ontvangst van de MELCloud-adapter. Beter dan −60 dBm is goed, slechter dan −75 dBm geeft verbindingsproblemen.",
       now: X => X.wifi == null ? "" : X.wifi >= -60 ? "Uitstekend." : X.wifi >= -75 ? "Redelijk." : "Zwak: kans op verbindingsproblemen met MELCloud." },
-    { k: "opmode", n: "Operation mode (Ecodan Huis)", c: "zone1", x: "Hoe de FTC6 de aanvoertemperatuur bepaalt: Room (op kamertemperatuur van het display), Flow (vaste aanvoertemperatuur) of Curve (stooklijn op basis van de buitentemperatuur). Het panel toont dit alleen; wijzigen kan hier bewust niet.",
+    { k: "opmode", n: "Operation mode (Ecodan Huis)", c: "curve", x: "Hoe de FTC6 de aanvoertemperatuur bepaalt: Room (op kamertemperatuur van het display), Flow (vaste aanvoertemperatuur) of Curve (stooklijn op basis van de buitentemperatuur). Het panel toont dit alleen; wijzigen kan hier bewust niet.",
       now: X => X.opmode == null ? "" : /curve/i.test(X.opmode) ? "Curve = stooklijn. Zo hoort het bij jouw installatie." : "Let op: niet op Curve. Daardoor regelt de warmtepomp anders dan bedoeld." },
   ]},
   { title: "Stroommeting meterkast", note: "Je eigen kWh-meters: echte metingen, los van MELCloud.", items: [
@@ -576,8 +626,8 @@ h3{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:.0
 .viewport{position:relative;overflow:hidden;touch-action:pan-y}
 .viewport.zoomed{touch-action:none}
 .viewport.zoomed svg.schema{cursor:grab}
-svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/920;font-family:var(--f-body);user-select:none;-webkit-user-select:none}
-.zoombar{position:absolute;right:8px;bottom:8px;display:flex;gap:6px}
+svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-family:var(--f-body);user-select:none;-webkit-user-select:none}
+.zoombar{display:flex;gap:6px;justify-content:flex-end;padding:6px 8px;border-top:1px solid var(--line)}
 @media (max-width:600px){.zb{width:34px;height:34px;border-radius:8px}.zb svg{width:18px;height:18px}}
 .zb{width:40px;height:40px;border-radius:10px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;
   box-shadow:0 1px 4px #0003;color:var(--ink)}
@@ -587,7 +637,7 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/920;font-famil
 .board.full .viewport{flex:1;min-height:0;touch-action:none}
 .board.full svg.schema{height:100%;aspect-ratio:auto}
 .board.full .board-foot{display:none}
-.board.full .zoombar{flex-direction:column;right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom))}
+.board.full .zoombar{position:absolute;flex-direction:column;padding:0;border:0;right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom))}
 .board-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1px solid var(--line)}
 /* SVG */
 .zone{fill:var(--zone);stroke:none}
@@ -632,6 +682,14 @@ svg.run-vraag .s-vraag{stroke:var(--hot);animation:sig 1s linear infinite} @keyf
 .fan{transform-box:fill-box;transform-origin:center}
 svg.run-fan .fan{animation:spin var(--sp-fan,1.4s) linear infinite} @keyframes spin{to{transform:rotate(360deg)}}
 svg.run-refr .compbody{stroke:var(--refr);stroke-width:2.6}
+.cgrid{stroke:var(--line);stroke-width:1}
+.caxis{stroke:var(--muted);stroke-width:1.3}
+.curve{fill:none;stroke:var(--hot);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round}
+.cpt{fill:var(--surface);stroke:var(--hot);stroke-width:1.6}
+.cnow{stroke:var(--accent);stroke-width:1.4;stroke-dasharray:3 3}
+.cdot{fill:var(--accent);stroke:var(--surface);stroke-width:2}
+.cflow{fill:var(--hot);stroke:var(--surface);stroke-width:2}
+#curvegrp.inactive .curve{stroke:var(--off)} #curvegrp.inactive .cpt{stroke:var(--off)}
 .sine{fill:none;stroke:var(--off);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 svg.run-refr .sine{stroke:var(--refr)}
 svg.run-pump1 .pumpbody{stroke:var(--accent);stroke-width:2.6}
@@ -689,7 +747,7 @@ section.flow b{color:var(--ink);font-weight:600}
 @media (prefers-reduced-motion:reduce){.fl,.fan,.coilheat,.s-vraag{animation:none!important}.comp,.pipe{transition:none}}
 `;
 
-const TEMPLATE = (floors) => `
+const TEMPLATE = (floors, curve) => `
 <div id="root">
   <div class="bar">
     <span id="menu"></span><h1 id="title">Ecodan</h1><span class="chip rust" id="mode">–</span>
@@ -700,13 +758,13 @@ const TEMPLATE = (floors) => `
     <div class="banners" id="banners"></div>
     <section class="kpis" id="kpis" aria-label="Kerncijfers"></section>
     <div class="board" id="board">
-      <div class="viewport" id="vp">${schemaSvg(floors)}
-        <div class="zoombar">
-          <button class="zb" id="z-in" aria-label="Inzoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
-          <button class="zb" id="z-out" aria-label="Uitzoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
-          <button class="zb" id="z-fit" aria-label="Hele schema tonen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1.5"/><path d="M9 10l-2 2 2 2M15 10l2 2-2 2"/></svg></button>
-          <button class="zb" id="z-full" aria-label="Volledig scherm"></button>
-        </div>
+      <div class="viewport" id="vp">${schemaSvg(floors, curve)}
+      </div>
+      <div class="zoombar">
+        <button class="zb" id="z-in" aria-label="Inzoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button class="zb" id="z-out" aria-label="Uitzoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+        <button class="zb" id="z-fit" aria-label="Hele schema tonen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1.5"/><path d="M9 10l-2 2 2 2M15 10l2 2-2 2"/></svg></button>
+        <button class="zb" id="z-full" aria-label="Volledig scherm"></button>
       </div>
       <div class="board-foot">
         <div class="legend" aria-label="Legenda">
@@ -744,10 +802,11 @@ const TEMPLATE = (floors) => `
 /* ------------------------- panel ----------------------------------- */
 function mountDashboard(host, root) {
   const $ = s => root.querySelector(s), $$ = s => [...root.querySelectorAll(s)];
-  const cfg = Object.assign({ prefix: "technische_ruimte_ecodan", klep_aan_is_tapwater: true, thema: "auto", overrides: {} },
+  const cfg = Object.assign({ prefix: "technische_ruimte_ecodan", klep_aan_is_tapwater: true, thema: "auto", overrides: {}, stooklijn: DEFAULT_CURVE },
                             host._panel?.config || {});
+  const CURVE = curvePoints(cfg.stooklijn);
   let R = resolveEntities(host._hass, cfg);
-  root.innerHTML = `<style>${STYLE}</style>${TEMPLATE(R.floors)}`;
+  root.innerHTML = `<style>${STYLE}</style>${TEMPLATE(R.floors, CURVE)}`;
   if (host._panel?.title) $("#title").textContent = host._panel.title;
   host._menu = document.createElement("ha-menu-button");
   host._menu.hass = host._hass; host._menu.narrow = host._narrow;
@@ -798,6 +857,7 @@ function mountDashboard(host, root) {
     while (th.length > 1 && th[1].t <= from) th.shift();               // houd één punt vóór het venster als beginstand
     X.tankDrop = th.length && X.tank != null ? Math.max(...th.map(p => p.v)) - X.tank : 0;
     X.hotDraw = X.tapFlow > 0 && X.tankDrop >= TAP_DROP;
+    X.curveTarget = X.buiten == null ? null : curveAt(CURVE, X.buiten);
     X.compRun = X.freq > 0 || X.pOut > P_RUN;
     X.compByMeter = X.compRun && !(X.freq > 0);                       // de meter ziet het al, MELCloud nog niet
     const running = X.compRun || !!X.pump1;
@@ -884,6 +944,19 @@ function mountDashboard(host, root) {
     svg.style.setProperty("--sp-refr", clamp(2.2 - fEff / 50, 0.45, 2.2).toFixed(2) + "s");
     svg.style.setProperty("--sp-fan", clamp(2.4 - fEff / 40, 0.5, 2.4).toFixed(2) + "s");
     drawSine(X.compRun ? fEff : 0);
+    // stooklijn: de buitentemperatuur op de lijn (doel-aanvoer) en de werkelijke aanvoer als die naar de vloeren gaat
+    const curveOn = X.opmode == null || /curve/i.test(X.opmode), heatNow = !!X.pump1 && !X.dhw && X.aanvoer != null;
+    $("#curvegrp").classList.toggle("inactive", !curveOn);
+    const put = (id, a) => { const el = $("#" + id); for (const [k, v] of Object.entries(a)) el.setAttribute(k, typeof v === "number" ? v.toFixed(1) : v); };
+    if (X.curveTarget != null) {
+      const x = cvx(X.buiten), y = cvy(X.curveTarget);
+      put("c-now", { x1: x, x2: x, y1: CV.y0, y2: y }); put("c-dot", { cx: x, cy: y });
+      put("c-flow", heatNow ? { cx: x, cy: cvy(X.aanvoer) } : { cx: -50, cy: -50 });
+    } else { put("c-now", { x1: -50, x2: -50 }); put("c-dot", { cx: -50, cy: -50 }); put("c-flow", { cx: -50, cy: -50 }); }
+    setT("c-txt", X.curveTarget == null ? "" : `buiten ${fmt(X.buiten, 1)} °C → doel aanvoer ${fmt(X.curveTarget, 1)} °C`, curveOn ? "" : "off");
+    setT("c-txt2", !curveOn ? `Niet actief: operation mode staat op ${X.opmode}.`
+      : heatNow ? `aanvoer nu ${fmt(X.aanvoer, 1)} °C (${X.aanvoer - X.curveTarget >= 0 ? "+" : ""}${fmt(X.aanvoer - X.curveTarget, 1)} t.o.v. de lijn)`
+      : "rode stip: werkelijke aanvoer zodra de vloerverwarming draait");
     svg.style.setProperty("--sp-eout", clamp(2.4 - (X.pOut || 0) / 500, 0.4, 2.4).toFixed(2) + "s");
     svg.style.setProperty("--sp-ein", clamp(2.4 - (X.pIn || 0) / 1000, 0.4, 2.4).toFixed(2) + "s");
     $("#port-heat").classList.toggle("on", !!X.pump1 && !X.dhw);
@@ -939,7 +1012,8 @@ function mountDashboard(host, root) {
     // kerncijfers
     const kpi = (c, k, v, u, s) => `<button class="kpi" data-c="${c}"><span class="k">${k}</span><span class="v">${v}${u ? ` <small>${u}</small>` : ""}</span><span class="s">${s || "&nbsp;"}</span></button>`;
     $("#kpis").innerHTML = [
-      kpi("th7", "Buiten", fmt(X.buiten, 1), "°C", X.opmode ? "regeling: " + esc(X.opmode) : ""),
+      kpi("th7", "Buiten", fmt(X.buiten, 1), "°C", (X.opmode ? "regeling: " + esc(X.opmode) : "")
+          + (X.curveTarget != null && (X.opmode == null || /curve/i.test(X.opmode)) ? ` · doel aanvoer ${fmt(X.curveTarget, 0)} °C` : "")),
       kpi("comp", "Compressor", X.freq > 0 ? fmt(X.freq, 0) : X.compByMeter ? "aan" : X.freq == null ? "–" : "0", X.compByMeter ? "" : "Hz",
           X.freq > 0 ? "draait" : X.compByMeter ? "volgens de kWh-meter; Hz volgt via MELCloud" : "staat stil"),
       kpi("thw1", "Aanvoer / retour", `${fmt(X.aanvoer, 1)} / ${fmt(X.retour, 1)}`, "°C", X.pump1 && X.dT != null ? "ΔT " + fmt(X.dT, 1) + " °C" : "pomp staat stil"),
@@ -994,6 +1068,8 @@ function mountDashboard(host, root) {
     if (X.mode === "rust") li.push(`<b>De installatie staat in rust.</b> Compressor ${hz}, pomp 1 uit${X.bh1 ? "" : ", geen elektrische bijverwarming"}.`);
     else if (X.mode === "verwarming") li.push(`<b>Ruimteverwarming.</b> Compressor ${hz}, aanvoer ${deg(X.aanvoer)}, retour ${deg(X.retour)}${X.dT != null ? `, ΔT ${fmt(X.dT, 1)} °C` : ""}. Het water gaat naar de verdelers.`);
     else li.push(`<b>Tapwater wordt opgewarmd.</b> Vat ${deg(X.tank)}${X.target != null ? `, doel ${fmt(X.target, 0)} °C` : ""}; aanvoer ${deg(X.aanvoer)}. De vloeren krijgen nu geen warmte: tapwater gaat voor.${X.bh1 ? " De booster heater helpt mee." : ""}`);
+    if (X.curveTarget != null && (X.opmode == null || /curve/i.test(X.opmode)))
+      li.push(`<b>Stooklijn:</b> bij ${deg(X.buiten)} buiten hoort een aanvoer van ${deg(X.curveTarget)}${X.mode === "verwarming" && X.aanvoer != null ? `; nu ${deg(X.aanvoer)}` : ""}.`);
     if (X.freq > 0 && !X.pump1) li.push(`De compressor draait maar pomp 1 staat (nog) uit: meestal een opstart- of ontdooimoment, of MELCloud loopt achter.`);
     if (X.pump1 && !X.freq) li.push(`Pomp 1 draait zonder compressor: nadraaien na een run, of ontdooien.`);
     if (X.vraagSrc !== "afgeleid")
@@ -1068,7 +1144,7 @@ function mountDashboard(host, root) {
   });
 
   /* zoomen en schuiven: de viewBox volgt schaal s (css-px per tekeneenheid) en middelpunt (cx, cy) */
-  const VB = { w: 1200, h: 920 }, vp = $("#vp"), board = $("#board");
+  const VB = { w: 1200, h: 1012 }, vp = $("#vp"), board = $("#board");
   const zm = { s: 0, cx: VB.w / 2, cy: VB.h / 2, fit: true };
   const box = () => { const r = svg.getBoundingClientRect(); return { l: r.left, t: r.top, W: r.width || 1, H: r.height || 1 }; };
   const fitS = () => { const b = box(); return Math.min(b.W / VB.w, b.H / VB.h); };

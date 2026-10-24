@@ -34,20 +34,35 @@
           "thema": "Theme",
           "prefix": "Entity prefix of the Ecodan device",
           "klep_aan_is_tapwater": "3-way valve: on = hot water",
-          "overrides": "Manual mapping (overrides)"
+          "overrides": "Manual mapping (overrides)",
+          "stooklijn_buiten_koud": "Heating curve: outdoor temperature of the cold point",
+          "stooklijn_aanvoer_koud": "Heating curve: flow temperature at the cold point",
+          "stooklijn_buiten_warm": "Heating curve: outdoor temperature of the warm point",
+          "stooklijn_aanvoer_warm": "Heating curve: flow temperature at the warm point",
+          "stooklijn_middenpunt": "Heating curve: use an adjustment point",
+          "stooklijn_midden_buiten": "Heating curve: outdoor temperature of the adjustment point",
+          "stooklijn_midden_aanvoer": "Heating curve: flow temperature at the adjustment point",
+          "stooklijn_verschuiving": "Heating curve: shift"
         },
         "data_description": {
           "prefix": "The part between the domain and the sensor name, e.g. technische_ruimte_ecodan for sensor.technische_ruimte_ecodan_tanktemperatuur.",
           "klep_aan_is_tapwater": "Turn this off if the diagram shows heating while the tank is being heated.",
           "overrides": "E.g. water_heater: water_heater.ecodan. Leave empty for automatic detection. See the README for all keys.",
-          "thema": "Default for everyone. The sun/moon button in the panel overrides it per device."
+          "thema": "Default for everyone. The sun/moon button in the panel overrides it per device.",
+          "stooklijn_buiten_koud": "Copy these from the Ecodan display (Heating → Compensation curve). The panel cannot read them from MELCloud. At this outdoor temperature and colder, the flow temperature is the value below.",
+          "stooklijn_buiten_warm": "At this outdoor temperature and warmer, the flow temperature is the value below. Must be warmer than the cold point.",
+          "stooklijn_middenpunt": "Only if an adjustment point is set on the display; it must lie between the cold and the warm point.",
+          "stooklijn_verschuiving": "Shift of the whole curve, as set on the display (−5 to +5 °C). Usually 0."
         }
       }
     },
     "error": {
       "invalid_url_path": "Only lowercase letters, digits, - and _",
       "invalid_prefix": "Only lowercase letters, digits and _",
-      "invalid_overrides": "Must be an object (mapping)"
+      "invalid_overrides": "Must be an object (mapping)",
+      "curve_order": "The warm point must be warmer than the cold point",
+      "curve_flow": "The flow temperature at the warm point cannot be higher than at the cold point",
+      "curve_mid": "The adjustment point must lie between the cold and the warm point"
     }
   },
   "selector": {

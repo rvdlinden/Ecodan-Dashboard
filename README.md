@@ -133,7 +133,30 @@ Via **Ecodan Dashboard → Configureren** stel je het volgende in:
 | Thema | `Licht`, `Donker` of `Volg Home Assistant`. De zon/maan-knop in het panel overschrijft dit per apparaat |
 | Entiteit-voorvoegsel | Standaard `technische_ruimte_ecodan`, dus bijv. `sensor.technische_ruimte_ecodan_tanktemperatuur` |
 | 3-wegklep: aan = tapwater | Zet uit als het schema verwarming toont terwijl het vat wordt opgewarmd |
+| Stooklijn | Koude punt, warme punt, optioneel aanpassingspunt en verschuiving, zoals op het Ecodan-display (zie *Stooklijn*) |
 | Overrides | Koppel entiteiten handmatig als de detectie iets mist |
+
+### Stooklijn
+
+MELCloud geeft de stooklijn (compensatiecurve) niet door. Daarom neem je de punten over van het
+Ecodan-display (**Verwarming → Compensatiecurve**) in **Configureren**:
+
+| Optie | Standaard | Betekenis |
+|---|---|---|
+| Buitentemperatuur / aanvoer koude punt | −7 °C / 32 °C | Bij −7 °C buiten en kouder is de aanvoer 32 °C |
+| Buitentemperatuur / aanvoer warme punt | 12 °C / 24 °C | Bij 12 °C buiten en warmer is de aanvoer 24 °C |
+| Aanpassingspunt | uit | Een derde punt ertussen, als dat op het display is ingesteld |
+| Verschuiving | 0 °C | Verschuift de hele lijn omhoog of omlaag (−5 tot +5 °C) |
+
+Tussen de punten loopt de lijn recht, net als op het display. In het schema staat de zone
+**STOOKLIJN** naast de meterkast:
+- de lijn zelf, met de ingestelde punten;
+- een groene stip bij de huidige buitentemperatuur: de aanvoer waar de FTC6 nu op mikt;
+- een rode stip met de werkelijke aanvoer (THW1) zodra de vloerverwarming draait, met het verschil
+  ten opzichte van de lijn.
+
+Pas je de stooklijn op het display aan, pas dan ook deze opties aan. Staat Operation mode niet op
+Curve, dan is de lijn grijs.
 
 ### Automatische detectie
 
