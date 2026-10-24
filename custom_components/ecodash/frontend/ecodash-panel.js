@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.4.1";
+const ECODASH_VERSION = "1.5.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -594,10 +594,29 @@ const STYLE = `
   display:block;height:100%;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;
   -webkit-font-smoothing:antialiased}
 :host(.dark){
-  --bg:#141a19; --surface:#1c2422; --ink:#e3ebe8; --muted:#97a6a1; --line:#3a4744; --zone:#202a28;
-  --hot:#ee6a52; --ret:#5d93ee; --refr:#a985e6; --dhw:#f0a33d; --cold:#4cc0d8; --sig:#8d9c97;
-  --accent:#3fc9a8; --accent-soft:#1d3c35; --off:#6f7d79; --elec:#e2b84a; --warn:#f0b04a; --warn-soft:#3a2f1a;
-  --bad:#ff8a80; --bad-soft:#3c1f1d; --dot:#ffffffd9; color-scheme:dark}
+  /* donker thema in de stijl van het Home Assistant-dashboard: bijna zwart, neutrale tegels, lime accent */
+  --bg:#0c0c0c; --surface:#131313; --ink:#e8e8e8; --muted:#9a9da2; --line:#2a2a2a; --zone:#1a1a1a;
+  --hot:#ff6b57; --ret:#5d9bff; --refr:#b48cff; --dhw:#ffab40; --cold:#4fd2e6; --sig:#7a7a7a;
+  --accent:#aedf2a; --accent-soft:#232d0c; --off:#6b6b6b; --elec:#f2c53d; --warn:#f0b04a; --warn-soft:#2a2213;
+  --bad:#ff6b5e; --bad-soft:#2c1513; --dot:#ffffffd9; --bar:#161616; --ctl:#2a2a2a;
+  --f-display:Roboto,"Noto Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-body:Roboto,"Noto Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:Roboto,"Noto Sans",system-ui,sans-serif; color-scheme:dark}
+/* tegels: geen rand, ronde hoeken en een dun lime lijntje bovenaan dat naar rechts vervaagt */
+:host(.dark) .kpi, :host(.dark) .board, :host(.dark) aside.detail, :host(.dark) section.flow > div, :host(.dark) .now-box{
+  border:0;border-radius:12px;
+  background:linear-gradient(90deg,var(--accent),transparent 35%) top left/100% 1.5px no-repeat,var(--surface)}
+:host(.dark) .kpi:hover{box-shadow:0 0 0 1px var(--line)}
+:host(.dark) .kpi .k{font-size:14px}
+:host(.dark) .kpi .v{font-size:30px;font-weight:400;letter-spacing:-.01em;line-height:1.2}
+:host(.dark) .kpi .v small{font-size:15px}
+:host(.dark) .bar{background:var(--bar);border-bottom:0}
+:host(.dark) .bar h1{font-weight:500}
+:host(.dark) .zb{background:var(--ctl);border:0;border-radius:12px;box-shadow:none}
+:host(.dark) .zoombar{border-top-color:var(--line)}
+:host(.dark) .board-foot{border-top-color:var(--line)}
+:host(.dark) .chip{border-color:#353535}
+:host(.dark) .banner{border-radius:12px}
 *{box-sizing:border-box}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 #root{height:100%;overflow:auto}
@@ -1034,7 +1053,7 @@ function mountDashboard(host, root) {
           + (X.curveTarget != null && (X.opmode == null || /curve/i.test(X.opmode)) ? ` · doel aanvoer ${fmt(X.curveTarget, 0)} °C` : "")),
       kpi("comp", "Compressor", X.freq > 0 ? fmt(X.freq, 0) : X.compByMeter ? "aan" : X.freq == null ? "–" : "0", X.compByMeter ? "" : "Hz",
           X.freq > 0 ? "draait" : X.compByMeter ? "volgens de kWh-meter; Hz volgt via MELCloud" : "staat stil"),
-      kpi("thw1", "Aanvoer / retour", `${fmt(X.aanvoer, 1)} / ${fmt(X.retour, 1)}`, "°C", X.pump1 && X.dT != null ? "ΔT " + fmt(X.dT, 1) + " °C" : "pomp staat stil"),
+      kpi("thw1", "Aanvoer / retour", fmt(X.aanvoer, 1), `/ ${fmt(X.retour, 1)} °C`, X.pump1 && X.dT != null ? "ΔT " + fmt(X.dT, 1) + " °C" : "pomp staat stil"),
       kpi("thw5", "Tapwater", fmt(X.tank, 1), "°C", X.target != null ? "doel " + fmt(X.target, 0) + " °C" : ""),
       kpi("meterOut", "Vermogen nu", X.pOut == null && X.pIn == null ? "–" : fmt((X.pOut || 0) + (X.pIn || 0), 0), "W",
           X.pOut != null || X.pIn != null ? `buiten ${fmt(X.pOut, 0)} · binnen ${fmt(X.pIn, 0)}` : ""),
