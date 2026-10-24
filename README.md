@@ -154,6 +154,9 @@ Tussen de punten loopt de lijn recht, net als op het display. In het schema staa
 - een groene stip bij de huidige buitentemperatuur: de aanvoer waar de FTC6 nu op mikt;
 - een rode stip met de werkelijke aanvoer (THW1) zodra de vloerverwarming draait, met het verschil
   ten opzichte van de lijn.
+- waarden om de 5 °C op beide assen en kleine streepjes om de 2 °C;
+- een draadkruis: wijs met de muis of tik in de grafiek, dan staan de buitentemperatuur (in hele
+  graden, zoals op het display) en de aanvoer op de lijn in een vakje op beide assen.
 
 Pas je de stooklijn op het display aan, pas dan ook deze opties aan. Staat Operation mode niet op
 Curve, dan is de lijn grijs.
