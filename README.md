@@ -37,7 +37,9 @@ kWh-meters in de meterkast die je al in HA hebt.
   en modus, wifi-signaal, vermogen en verbruik van vandaag per kWh-meter, en de
   kamertemperaturen.
 - **Kerncijfers bovenaan:** buiten, compressor, aanvoer/retour, tapwater, vermogen nu, warmte
-  vandaag en de **COP van vandaag met gemeten stroom**: warmte volgens MELCloud ÷ wat de
+  vandaag en de COP voor vloer en tapwater uit `sensor.technische_ruimte_ecodan_verwarming_cop` en
+  `sensor.technische_ruimte_ecodan_sww_cop` (een COP van 0 betekent: te weinig gedraaid en staat als –).
+  Daaronder, als de periodes kloppen, de **totale COP van vandaag met gemeten stroom**: warmte volgens MELCloud ÷ wat de
   kWh-meters vandaag gemeten hebben. Je hebt daar geen Riemann- of utility-meter-helpers voor nodig.
   MELCloud werkt de dagtotalen met vertraging bij. Is geen van die dagtotalen sinds middernacht
   veranderd, dan horen ze bij een eerdere dag. Het panel toont ze dan als *MELCloud-dag* met de

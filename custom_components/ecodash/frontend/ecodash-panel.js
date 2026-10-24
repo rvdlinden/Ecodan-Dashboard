@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.1.0";
+const ECODASH_VERSION = "1.2.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -923,8 +923,12 @@ function mountDashboard(host, root) {
           X.pOut != null || X.pIn != null ? `buiten ${fmt(X.pOut, 0)} · binnen ${fmt(X.pIn, 0)}` : ""),
       kpi("ftc", X.dailyFresh || X.dailySince == null ? "Warmte vandaag" : "Warmte (MELCloud-dag)", fmt(X.prodTot, 2), "kWh",
           (X.heat_prod != null ? `vloer ${fmt(X.heat_prod, 2)} · tap ${fmt(X.dhw_prod, 2)}` : "") + (X.dailySince && !X.dailyFresh ? ` · stand ${dagTijd(X.dailySince)}` : "")),
-      kpi("meterOut", X.dailyFresh || X.dailySince == null ? "COP vandaag" : "COP (MELCloud-dag)", fmt(X.copMeas ?? X.copMel, 2), "",
-          X.copMeas != null ? "met gemeten stroom" : X.copMel != null ? (X.dailyFresh ? "schatting MELCloud" : "schatting MELCloud, laatste dagwaarde") : "nog te weinig gedraaid"),
+      // COP per functie uit de COP-sensoren in Home Assistant; 0 betekent: te weinig gedraaid om te berekenen
+      (R.heat_cop || R.dhw_cop)
+        ? kpi("ftc", "COP vloer / tapwater", `${X.heat_cop ? fmt(X.heat_cop, 1) : "–"} / ${X.dhw_cop ? fmt(X.dhw_cop, 1) : "–"}`, "",
+            X.copMeas != null ? `totaal met gemeten stroom ${fmt(X.copMeas, 2)}` : X.dailyFresh || X.dailySince == null ? "vandaag" : `dagwaarde ${dagTijd(X.dailySince)}`)
+        : kpi("meterOut", X.dailyFresh || X.dailySince == null ? "COP vandaag" : "COP (MELCloud-dag)", fmt(X.copMeas ?? X.copMel, 2), "",
+            X.copMeas != null ? "met gemeten stroom" : X.copMel != null ? (X.dailyFresh ? "schatting MELCloud" : "schatting MELCloud, laatste dagwaarde") : "nog te weinig gedraaid"),
     ].join("");
 
     // entiteitenlijst
@@ -978,8 +982,8 @@ function mountDashboard(host, root) {
       li.push(d <= 0 ? `<b>Het vat is op temperatuur</b> (${deg(X.tank)}).` : `<b>Vat ${deg(X.tank)}</b>, ${fmt(d, 1)} °C onder het doel. ${d <= 8 ? "Binnen de marge (hysterese), dus de warmtepomp start nog niet." : "Tapwater-opwarming volgt binnenkort."}`);
     }
     const dag = X.dailyFresh || X.dailySince == null ? "vandaag" : `(MELCloud-dagwaarde van ${dagTijd(X.dailySince)})`;
-    if (X.dhw_prod != null) li.push(`<b>Tapwater ${dag}:</b> ${fmt(X.dhw_cons, 2)} kWh stroom in, ${fmt(X.dhw_prod, 2)} kWh warmte uit${X.dhw_cons > 0.2 ? `: COP ${fmt(X.dhw_prod / X.dhw_cons, 2)}` : ""}.`);
-    if (X.heat_prod != null) li.push(`<b>Vloerverwarming ${dag}:</b> ${fmt(X.heat_cons, 2)} kWh stroom in, ${fmt(X.heat_prod, 2)} kWh warmte uit${X.heat_cons > 0.2 ? `: COP ${fmt(X.heat_prod / X.heat_cons, 2)}` : ": te weinig om een COP te berekenen"}.`);
+    if (X.dhw_prod != null) li.push(`<b>Tapwater ${dag}:</b> ${fmt(X.dhw_cons, 2)} kWh stroom in, ${fmt(X.dhw_prod, 2)} kWh warmte uit${X.dhw_cop ? `: COP ${fmt(X.dhw_cop, 2)}` : R.dhw_cop ? "" : X.dhw_cons > 0.2 ? `: COP ${fmt(X.dhw_prod / X.dhw_cons, 2)}` : ""}.`);
+    if (X.heat_prod != null) li.push(`<b>Vloerverwarming ${dag}:</b> ${fmt(X.heat_cons, 2)} kWh stroom in, ${fmt(X.heat_prod, 2)} kWh warmte uit${X.heat_cop ? `: COP ${fmt(X.heat_cop, 2)}` : !R.heat_cop && X.heat_cons > 0.2 ? `: COP ${fmt(X.heat_prod / X.heat_cons, 2)}` : ": te weinig om een COP te berekenen"}.`);
     if (X.mTot != null) li.push(`<b>Gemeten in de meterkast vandaag:</b> ${fmt(X.mTot, 2)} kWh${X.consTot != null && X.dailyFresh ? ` tegen ${fmt(X.consTot, 2)} kWh volgens MELCloud` : ""}${X.copMeas != null ? `. Echte COP vandaag: <b>${fmt(X.copMeas, 2)}</b>` : ""}.`);
     if (X.pOut != null || X.pIn != null)
       li.push(`<b>Stroom nu: ${fmt(X.pOut, 0)} W buiten, ${fmt(X.pIn, 0)} W binnen.</b> ${X.pOut < P_IDLE && X.pIn < P_IDLE ? "Alleen stand-by." : X.pIn > 1500 ? "De booster heater staat aan." : ""}`);
