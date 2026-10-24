@@ -10,16 +10,28 @@ kWh-meters in de meterkast die je al in HA hebt.
   thermostaten per verdieping en de kWh-meters in de meterkast.
 - **Live stromen:** lopende bolletjes laten zien waar nu iets stroomt.
   - Koudemiddel (paars) zodra de compressor draait; sneller bij een hoger toerental. De
-    ventilator in de buitenunit draait mee.
+    ventilator in de buitenunit draait mee en bij de compressor staat de frequentie. MELCloud geeft
+    de frequentie pas na een paar minuten door. Meet de kWh-meter van de buitenunit al meer dan
+    150 W, dan draaien ventilator en koudemiddel meteen mee en staat er *draait* tot de frequentie
+    binnenkomt.
   - Verwarmingswater zodra pomp 1 draait. De 3-wegklep bepaalt de route: naar de verdelers
     en vloerlussen (verwarming) óf door de spiraal in het vat (tapwater). De tak die niet in
     gebruik is wordt gedimd en de actieve klepuitgang kleurt rood.
   - Stroom (geel) van de meterkast naar de buiten- en binnenunit zodra een groep meer dan 30 W
     (stand-by) gebruikt; sneller bij meer vermogen.
+  - Tapwater: koud leidingwater het vat in en warm water naar de kranen, alleen als er echt
+    warm water getapt wordt (zie *Tapwater en de watermeter*).
   - De booster heater gloeit als hij aan staat; de kleur in het tapwatervat volgt de
     tanktemperatuur.
-  - Warmtevraag: vraagt een kamerthermostaat warmte, dan kleuren de stip, de regelunit en het
-    signaal naar de FTC6 rood.
+  - Warmtevraag: draait de warmtepomp op ruimteverwarming, dan kleurt het signaal naar de FTC6
+    rood. Met slimme thermostaten (climate-entiteiten) of een eigen warmtevraagsensor kleuren ook
+    de stip en de regelunit van de kamer die warmte vraagt.
+- **Inzoomen en volledig scherm:** knijp met twee vingers, dubbeltik of gebruik de knoppen + en −
+  om in te zoomen, en sleep om te schuiven. De knop ⛶ zet het schema schermvullend en begint dan
+  zo groot dat het de hoogte (staand) of breedte (liggend) vult. Op een pc zoom je met Ctrl +
+  scrollwiel of knijpen op het touchpad.
+- **Kamertemperaturen:** per kamer de temperatuur van de slimme meter naast de (domme)
+  thermostaat, in het schema, in de lijst *Kamertemperaturen* en in *Wat gebeurt er nu?*
 - **Waarden bij elk onderdeel:** buitentemperatuur (TH7), compressorfrequentie,
   condensatietemperatuur, aanvoer (THW1), retour (THW2) met ΔT, tanktemperatuur (THW5) met doel
   en modus, wifi-signaal, vermogen en verbruik van vandaag per kWh-meter, en de
@@ -27,6 +39,9 @@ kWh-meters in de meterkast die je al in HA hebt.
 - **Kerncijfers bovenaan:** buiten, compressor, aanvoer/retour, tapwater, vermogen nu, warmte
   vandaag en de **COP van vandaag met gemeten stroom**: warmte volgens MELCloud ÷ wat de
   kWh-meters vandaag gemeten hebben. Je hebt daar geen Riemann- of utility-meter-helpers voor nodig.
+  MELCloud werkt de dagtotalen met vertraging bij. Is geen van die dagtotalen sinds middernacht
+  veranderd, dan horen ze bij een eerdere dag. Het panel toont ze dan als *MELCloud-dag* met de
+  datum en rekent geen gemeten COP uit, omdat de periodes niet overeenkomen.
 - **Uitleg per onderdeel en entiteit:** klik op een onderdeel in het schema of op een
   entiteit in de lijst. De detailkaart legt uit wat het onderdeel doet en wat de huidige waarde
   betekent, met een knop naar de geschiedenis van de entiteit.
@@ -50,8 +65,8 @@ kWh-meters in de meterkast die je al in HA hebt.
   apparaten *Ecodan* (unit + tapwater) en *Ecodan Huis* (zone 1).
 - Optioneel: kWh-meters voor de groepen van de buiten- en binnenunit (bijv. HomeWizard
   kWh-meters). Zonder meters werkt alles behalve de gemeten stroom en de gemeten COP.
-- Optioneel: climate-entiteiten voor de kamerthermostaten, voor kamertemperaturen en warmtevraag
-  in het schema.
+- Optioneel: een temperatuursensor of climate-entiteit per kamer. Standaard gebruikt het panel de
+  slimme meters naast de thermostaten (zie *Kamers*).
 
 ## Installatie via HACS (aanbevolen)
 
@@ -127,8 +142,21 @@ wordt de totaalteller (`..._energie_import`) gezocht. Het verbruik van vandaag i
 min de stand om middernacht uit de historie. Zonder teller rekent het panel met de
 5-minutenstatistiek van het vermogen.
 
-Kamerthermostaten worden gevonden op kamernaam: `climate.woonkamer` of een climate-entiteit met de
-naam *Woonkamer*.
+### Kamers
+
+Standaard staan deze kamers met hun temperatuurmeter in het schema:
+
+| Verdieping | Kamer | Entiteit |
+|---|---|---|
+| 2e verdieping | Slaapkamer 4 | `sensor.kantoor_thermo_hygro_temperature` |
+| 1e verdieping | Slaapkamer 1 | `sensor.slaapkamer_thermo_hygro_temperature` |
+| 1e verdieping | Slaapkamer 2 | `sensor.kinderkamer_thermo_hygro_temperature` |
+| 1e verdieping | Slaapkamer 3 | `sensor.hobbykamer_thermo_hygro_temperature` |
+| Begane grond | Woonkamer | `sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur` |
+
+Bestaat zo'n sensor niet, dan zoekt het panel een climate-entiteit op kamernaam
+(`climate.woonkamer` of een climate-entiteit met de naam *Woonkamer*). Een andere indeling stel je
+in met de override `verdiepingen`.
 
 ### Overrides
 
@@ -139,9 +167,9 @@ Sleutels voor losse entiteiten: `buiten`, `freq`, `cond`, `aanvoer`, `retour`, `
 
 | Sleutel | Uitleg |
 |---|---|
-| `verdiepingen` | Indeling van de woning (max. 3 verdiepingen, max. 4 kamers per verdieping), van boven naar beneden. Een kamer is een naam of `{naam, entity}`; met `entity: false` zoekt het panel geen thermostaat |
-| `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Zonder deze sleutel geldt: warmtevraag = een thermostaat met `hvac_action: heating` |
-| `tapwater_debiet` | Een sensor voor waterdoorstroming (bijv. een watermeter). Boven 0 lopen er bolletjes over de tapwaterleidingen. Een watermeter meet al het water in huis, niet alleen warm water |
+| `verdiepingen` | Indeling van de woning (max. 3 verdiepingen, max. 4 kamers per verdieping), van boven naar beneden. Een kamer is een naam of `{naam, entity}` met een temperatuursensor of climate-entiteit; met `entity: false` zoekt het panel niets |
+| `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Zonder deze sleutel geldt: warmtevraag = een climate-entiteit met `hvac_action: heating`, of anders: de warmtepomp draait op ruimteverwarming |
+| `tapwater_debiet` | Sensor voor de actuele waterdoorstroming. Standaard `sensor.meterkast_watermeter_water_gebruik` (zie *Tapwater en de watermeter*) |
 
 Een voorbeeld:
 
@@ -153,12 +181,27 @@ verdiepingen:
   - naam: 1e verdieping
     kamers:
       - Slaapkamer 1
-      - {naam: Slaapkamer 2, entity: climate.slaapkamer_twee}
+      - {naam: Slaapkamer 2, entity: sensor.kinderkamer_thermo_hygro_temperature}
       - Slaapkamer 3
   - naam: Begane grond
     kamers: [Woonkamer]
 tapwater_debiet: sensor.watermeter_actueel_waterverbruik
 ```
+
+### Tapwater en de watermeter
+
+De Ecodan neemt zelf geen water uit de waterleiding: het verwarmingscircuit is gesloten. Het vat
+krijgt alleen koud leidingwater binnen als er ergens warm water getapt wordt. De watermeter
+(`sensor.meterkast_watermeter_water_gebruik`) meet al het water in huis, dus ook toilet en koude
+kranen. Daarom toont het schema de stroming door het vat alleen als er water stroomt **én** het
+vat (THW5) in de laatste 15 minuten minstens 1 °C is afgekoeld. Stroomt er water zonder dat het vat
+afkoelt, dan staat bij de koudwaterleiding *niet via het vat*.
+
+Beperkingen:
+- MELCloud geeft de tanktemperatuur met een paar minuten vertraging door, in stappen van 0,5 °C. De
+  stroming verschijnt dus pas als het afkoelen gemeld is, en korte tapbeurten (handen wassen) zie
+  je niet.
+- Tot 15 minuten na een douchebeurt wordt ook een toiletspoeling als *via het vat* getoond.
 
 ## Hoe het werkt
 

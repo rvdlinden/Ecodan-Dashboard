@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.0.0";
+const ECODASH_VERSION = "1.1.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -37,12 +37,24 @@ const ENT = {
   pump2:       { d: "binary_sensor", s: ["water_pump_2"] },
 };
 const MELCLOUD_KEYS = Object.keys(ENT).concat(["water_heater", "opmode"]);
+// Per kamer de slimme temperatuurmeter die naast de (domme) thermostaat hangt.
 const DEFAULT_FLOORS = [
-  { naam: "2E VERDIEPING", kamers: ["Slaapkamer 4"] },
-  { naam: "1E VERDIEPING", kamers: ["Slaapkamer 1", "Slaapkamer 2", "Slaapkamer 3"] },
-  { naam: "BEGANE GROND", kamers: ["Woonkamer"] },
+  { naam: "2E VERDIEPING", kamers: [{ naam: "Slaapkamer 4", entity: "sensor.kantoor_thermo_hygro_temperature" }] },
+  { naam: "1E VERDIEPING", kamers: [
+    { naam: "Slaapkamer 1", entity: "sensor.slaapkamer_thermo_hygro_temperature" },
+    { naam: "Slaapkamer 2", entity: "sensor.kinderkamer_thermo_hygro_temperature" },
+    { naam: "Slaapkamer 3", entity: "sensor.hobbykamer_thermo_hygro_temperature" }] },
+  { naam: "BEGANE GROND", kamers: [{ naam: "Woonkamer", entity: "sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur" }] },
 ];
 const P_IDLE = 30;            // W: daaronder is een groep in stand-by (regelaar, wifi)
+// Boven dit vermogen op de groep van de buitenunit draaien compressor en ventilator. De kWh-meter reageert direct,
+// MELCloud geeft de frequentie pas na een paar minuten door; zo draait de ventilator meteen mee.
+const P_RUN = 150;
+// De watermeter meet al het water in huis. Alleen als het vat tegelijk afkoelt (er stroomt koud water in omdat er
+// warm water getapt wordt) loopt de stroom via het vat. 1 °C, omdat MELCloud THW5 in stappen van 0,5 °C meldt
+// en het vat in rust ook langzaam afkoelt.
+const TAP_DROP = 1.0;         // °C afkoeling van het vat ...
+const TAP_WIN = 15 * 60e3;    // ... binnen dit venster
 
 const slug = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
@@ -92,7 +104,8 @@ function resolveEntities(hass, cfg) {
   r.e_in = pick(ov.e_in) || energyOf("binnenunit", r.p_in);
 
   // optioneel: tapwaterdebiet en warmtevraag
-  r.tap = pick(ov.tapwater_debiet);
+  r.tap = pick(ov.tapwater_debiet) || (has("sensor.meterkast_watermeter_water_gebruik") ? "sensor.meterkast_watermeter_water_gebruik"
+    : ids.find(id => id.startsWith("sensor.") && id.includes("watermeter") && /_(water_gebruik|active_water_usage)$/.test(id)) || null);
   r.vraag = pick(ov.warmtevraag);
 
   // verdiepingen en kamers; thermostaten worden gezocht op kamernaam (climate.woonkamer of naam "Woonkamer")
@@ -102,15 +115,17 @@ function resolveEntities(hass, cfg) {
     naam: String(f.naam || f.name || "").toUpperCase(),
     kamers: (f.kamers || f.rooms || []).slice(0, 4).map(k => {
       const naam = typeof k === "string" ? k : (k.naam || k.name || "");
-      let ent = typeof k === "object" && k ? pick(k.entity) : null;
+      const given = typeof k === "object" && k ? pick(k.entity) : null;
+      let ent = has(given) ? given : null;
       if (!ent && !(typeof k === "object" && k && k.entity === false)) {
         const sl = slug(naam);
         ent = climates.find(id => id === "climate." + sl)
-          || climates.find(id => slug(S[id].attributes.friendly_name || "") === sl) || null;
+          || climates.find(id => slug(S[id].attributes.friendly_name || "") === sl) || given;
       }
       return { naam, ent };
     }),
   }));
+  r.floors.forEach((f, fi) => f.kamers.forEach((k, j) => { r[`room_${fi}_${j}`] = k.ent; }));
   return r;
 }
 
@@ -121,6 +136,7 @@ const fmt = (v, d = 1) => (v == null || !isFinite(v) ? "–" : nf(d).format(v).r
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const hhmm = t => new Date(t).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+const dagTijd = t => new Date(t).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 /* ------------------------- SVG-schema ------------------------------ */
 // pipe(): de leiding zelf plus een stroom-overlay (bolletjes) die alleen zichtbaar is als de groep actief is.
@@ -212,6 +228,8 @@ function schemaSvg(floors) {
   <text class="t s" x="356" y="446">warm tapwater</text>
   <text class="t s" x="364" y="474">naar de kranen</text>
   <text class="t s" x="356" y="726">koud leidingwater</text>
+  <text class="val sm" id="v-tap" x="356" y="754"></text>
+  <text class="val sm" id="v-tap2" x="356" y="767"></text>
 
   <path class="sig s-vraag" d="M1180,579 V56 H750 V125 H740"/>
   <text class="t s" x="1170" y="50" text-anchor="end">warmtevraag aan/uit → FTC6</text>
@@ -222,6 +240,7 @@ function schemaSvg(floors) {
     <text class="t s" x="54" y="132">buitenunit</text>
     <circle class="shape soft" cx="120" cy="228" r="62"/>
     <g class="fill-muted fan" opacity=".55">
+      <circle cx="120" cy="228" r="58" fill="none" stroke="none"/>
       <ellipse cx="120" cy="198" rx="11" ry="26"/>
       <ellipse cx="120" cy="198" rx="11" ry="26" transform="rotate(120 120 228)"/>
       <ellipse cx="120" cy="198" rx="11" ry="26" transform="rotate(240 120 228)"/>
@@ -385,7 +404,7 @@ function schemaSvg(floors) {
 
 /* ------------------------- onderdelen ------------------------------ */
 const C = {
-  outdoor: { name: "Buitenunit SUZ-SWM60 VA", where: "Tuin", text: "De eigenlijke warmtepomp. De ventilator blaast buitenlucht langs de verdamper; het koude koudemiddel neemt daar warmte op, ook als het buiten koud is. Een 6 kW-unit (SWM60). Er loopt geen water naar buiten, alleen twee koudemiddelleidingen. In het schema draait de ventilator mee zodra de compressor draait." },
+  outdoor: { name: "Buitenunit SUZ-SWM60 VA", where: "Tuin", text: "De eigenlijke warmtepomp. De ventilator blaast buitenlucht langs de verdamper; het koude koudemiddel neemt daar warmte op, ook als het buiten koud is. Een 6 kW-unit (SWM60). Er loopt geen water naar buiten, alleen twee koudemiddelleidingen. In het schema draait de ventilator mee zodra de compressor draait: volgens MELCloud (frequentie boven 0 Hz) of al eerder volgens de kWh-meter (meer dan 150 W op de groep van de buitenunit)." },
   comp: { name: "Compressor", where: "In de buitenunit", text: "Het hart van de warmtepomp. Drukt het koudemiddel samen, waardoor het heet wordt. Het is een inverter: het toerental (in Hz) past zich aan de vraag aan. 0 Hz = uit." },
   th7: { name: "Buitenvoeler TH7", where: "Achterkant buitenunit", text: "Meet de buitentemperatuur. De regelaar gebruikt die voor de stooklijn: hoe kouder het buiten is, hoe warmer het water naar de vloeren gaat." },
   refr: { name: "Koudemiddelleidingen (R32)", where: "Tussen tuin en technische ruimte", text: "Twee koperen leidingen: een dikke gasleiding (heet gas naar binnen) en een dunne vloeistofleiding (terug naar buiten). Dit is een split-systeem: het koudemiddel komt tot in de cilinderunit. De paarse bolletjes lopen zodra de compressor draait; hoe hoger het toerental, hoe sneller." },
@@ -400,11 +419,11 @@ const C = {
   tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit; het geeft zijn warmte af via de spiraal. De kleur in het vat volgt de tanktemperatuur." },
   coil: { name: "Spiraal in het vat", where: "In het tapwatervat", text: "Als de 3-wegklep op tapwater staat, stroomt het warme verwarmingswater door deze spiraal en warmt zo het vat op." },
   imm: { name: "Dompelaar (immersion heater)", where: "Zou in het vat zitten", text: "Een optioneel elektrisch element direct in het tapwatervat. De standaard EHST20D-uitvoeringen hebben er geen; de entiteit bestaat omdat de regelaar het wel kán aansturen." },
-  thw5: { name: "Tankvoeler THW5", where: "Halverwege het vat", text: "Temperatuur van het tapwater. Zakt die onder de ingestelde waarde min de hysterese (vaak 5–10 °C), dan schakelt de warmtepomp naar tapwater." },
+  thw5: { name: "Tankvoeler THW5", where: "Halverwege het vat", text: "Temperatuur van het tapwater. Zakt die onder de ingestelde waarde min de hysterese (vaak 5–10 °C), dan schakelt de warmtepomp naar tapwater. Tap je warm water, dan stroomt er onderin koud leidingwater bij en zakt deze temperatuur; daaraan herkent het panel dat het water via het vat loopt." },
   cyl: { name: "Cilinderunit EHST20D-VM2D", where: "Technische ruimte", text: "Alles-in-één binnenunit: platenwisselaar, pomp, 3-wegklep, 2 kW booster heater, expansievat, regelaar en een 200 L tapwatervat in één kast. 'VM2' = 1-fase, 2 kW booster heater. De H in EHST staat voor alleen verwarmen: deze unit kan niet koelen." },
   manifold: { name: "Vloerverwarmingsverdelers", where: "Eén per verdieping", text: "Verdelen het warme water over 4–5 lussen per verdieping. Elke lus is een slang die door één kamer (of een deel ervan) in de dekvloer loopt en afgekoeld terugkomt." },
   act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' bovenop de verdeler die een lus open of dicht zetten. Ze worden aangestuurd door de thermostaat van de kamer. Niet zichtbaar in MELCloud." },
-  tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat opent de kranen van zijn eigen kamer. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. Vindt het panel een climate-entiteit met de naam van de kamer, dan zie je hier de kamertemperatuur; een rode stip betekent dat die thermostaat warmte vraagt." },
+  tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat opent de kranen van zijn eigen kamer. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt is daardoor niet te zien. Het panel leidt de warmtevraag af uit de warmtepomp: draait die op ruimteverwarming, dan vraagt minstens één thermostaat warmte en kleurt het signaal naar de FTC6 rood." },
   unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een hybride cv-ketel, een mengvat met extra zonepomp en meer. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat MELCloud ze altijd meestuurt. Voelers zonder sensor geven een vaste 25,0 °C." },
   zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. In Home Assistant maakt MELCloud daar een apart apparaat voor ('Ecodan Huis'). Het apparaat 'Ecodan' is de unit zelf met het tapwater." },
   absent: { name: "Uitgeschakelde entiteiten", where: "Komen niet voor in jouw installatie", text: "De MELCloud-integratie maakt voor elke uitgang van de FTC6 een entiteit aan, ook voor functies die jouw installatie niet heeft: koelen, een tweede booster-trap, extra zones en een los tapwatervat. Home Assistant heeft deze standaard uitgeschakeld en dat kan zo blijven." },
@@ -422,7 +441,8 @@ const G = [
       ? "Vorst: de stooklijn vraagt een hoge aanvoertemperatuur en de booster heater kan bijspringen."
       : X.buiten < 7 ? "Koud: de stooklijn vraagt een hogere aanvoertemperatuur."
       : X.buiten < 16 ? "Mild weer: de stooklijn vraagt een lage aanvoertemperatuur." : "Warm: er is weinig of geen verwarmingsvraag." },
-    { k: "freq", n: "Heat pump frequency", c: "comp", now: X => !X.freq ? "0 Hz: de compressor staat stil."
+    { k: "freq", n: "Heat pump frequency", c: "comp", now: X => X.compByMeter ? `MELCloud meldt nog 0 Hz, maar de kWh-meter van de buitenunit meet ${fmt(X.pOut, 0)} W: de compressor draait al. De frequentie volgt over een paar minuten.`
+      : !X.freq ? "0 Hz: de compressor staat stil."
       : `De compressor draait op ${fmt(X.freq, 0)} Hz` + (X.freq < 35 ? ": laag toerental, rustig modulerend en zuinig." : X.freq > 70 ? ": hoog toerental, grote vraag (tapwater of kou)." : ".") },
     { k: "cond", n: "Condensing temperature", c: "hex", x: "Temperatuur waarbij het koudemiddel in de platenwisselaar condenseert, dus waar de warmte aan het water wordt afgegeven. Wordt gemeten in de buitenunit, maar hoort fysiek bij de platenwisselaar.",
       now: X => !X.freq ? "Bij stilstand zakt het koudemiddel richting omgevingstemperatuur."
@@ -449,15 +469,17 @@ const G = [
         : `${fmt(d, 1)} °C onder het doel: de warmtepomp schakelt binnenkort naar tapwater.`; } },
     { k: "water_heater", n: "Ecodan (bediening tapwater)", c: "tank", x: "De bedienknop voor het tapwater. Hier stel je de gewenste vattemperatuur en de modus in. 'Huidige temperatuur' is dezelfde meting als Tanktemperatuur (THW5).",
       now: X => X.target == null ? "" : `Modus ${esc(X.whMode || "–")}, doel ${fmt(X.target, 0)} °C.` },
+    { k: "tap", n: "Waterverbruik (watermeter)", c: "tank", x: `De watermeter in de meterkast meet al het water in huis, ook voor toilet en koude kranen. Het schema toont alleen stroming door het vat als het vat tegelijk minstens ${fmt(TAP_DROP, 1)} °C afkoelt binnen ${TAP_WIN / 60e3} minuten. Doordat MELCloud de tanktemperatuur met vertraging doorgeeft, start dat pas na een paar minuten; korte tapbeurten (handen wassen) zie je niet.`,
+      now: X => !X.tapFlow ? "Er stroomt nu geen water." : X.hotDraw ? `Er wordt warm water getapt: het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld.` : "Er stroomt water, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan." },
     { k: "imm", n: "Immersion heater", c: "imm", now: X => X.imm ? "Aan! Onverwacht: bij de EHST20D-VM2D zit normaal geen dompelaar." : "Uit. Bij jouw model is er waarschijnlijk geen dompelaar ingebouwd, dus dit blijft altijd uit." },
   ]},
   { title: "Regelaar, energie en verbinding", note: "Waarden die de FTC6 berekent of over zichzelf rapporteert.", items: [
-    { k: "dhw_prod", n: "Daily hot water energy produced", c: "ftc", x: "Warmte die vandaag in het tapwatervat is gestopt. Berekend door de FTC6 uit debiet × (aanvoer − retour); een goede schatting, geen geijkte meter." },
-    { k: "dhw_cons", n: "Daily hot water energy consumed", c: "ftc", x: "Stroom die vandaag is verbruikt voor tapwater (compressor, pomp, eventueel heaters). Intern berekend." },
+    { k: "dhw_prod", n: "Daily hot water energy produced", c: "ftc", x: "Warmte die vandaag in het tapwatervat is gestopt. Berekend door de FTC6 uit debiet × (aanvoer − retour); een goede schatting, geen geijkte meter.", now: X => X.dailyFresh ? "" : `Deze waarde is sinds ${dagTijd(X.dailySince)} niet veranderd, dus hij hoort bij een eerdere dag. MELCloud werkt de dagtotalen met vertraging bij.` },
+    { k: "dhw_cons", n: "Daily hot water energy consumed", c: "ftc", x: "Stroom die vandaag is verbruikt voor tapwater (compressor, pomp, eventueel heaters). Intern berekend.", now: X => X.dailyFresh ? "" : `Deze waarde is sinds ${dagTijd(X.dailySince)} niet veranderd, dus hij hoort bij een eerdere dag. MELCloud werkt de dagtotalen met vertraging bij.` },
     { k: "dhw_cop", n: "SWW COP", c: "ftc", x: "COP voor sanitair warm water = geproduceerd ÷ verbruikt. Hoe hoger, hoe zuiniger. Tapwater haalt lager dan verwarming omdat het water heter moet (±50 °C).",
       now: X => X.dhw_cop ? (X.dhw_cop >= 2 ? "Normaal voor tapwater." : "Laag: misschien heeft de booster heater meegedraaid (legionella-run).") : "0: vandaag nog geen tapwater gemaakt." },
-    { k: "heat_prod", n: "Daily heating energy produced", c: "ftc", x: "Warmte die vandaag naar de vloerverwarming is gegaan." },
-    { k: "heat_cons", n: "Daily heating energy consumed", c: "ftc", x: "Stroom die vandaag voor ruimteverwarming is verbruikt." },
+    { k: "heat_prod", n: "Daily heating energy produced", c: "ftc", x: "Warmte die vandaag naar de vloerverwarming is gegaan.", now: X => X.dailyFresh ? "" : `Deze waarde is sinds ${dagTijd(X.dailySince)} niet veranderd, dus hij hoort bij een eerdere dag. MELCloud werkt de dagtotalen met vertraging bij.` },
+    { k: "heat_cons", n: "Daily heating energy consumed", c: "ftc", x: "Stroom die vandaag voor ruimteverwarming is verbruikt.", now: X => X.dailyFresh ? "" : `Deze waarde is sinds ${dagTijd(X.dailySince)} niet veranderd, dus hij hoort bij een eerdere dag. MELCloud werkt de dagtotalen met vertraging bij.` },
     { k: "heat_cop", n: "Verwarming COP", c: "ftc", x: "COP voor ruimteverwarming. Bij vloerverwarming haalt een Ecodan buiten de strenge winter vaak 4 of hoger.",
       now: X => X.heat_cop ? (X.heat_cop >= 3.5 ? "Goed." : X.heat_cop >= 2.5 ? "Redelijk; bij kou is dit normaal." : "Laag: weinig gedraaid, of de booster heater sprong bij.") : "0: te weinig gedraaid om te berekenen." },
     { k: "e_prod", n: "Energy produced", c: "ftc", x: "Lopende waarde van geleverde warmte. Staat op 0 zolang de compressor niets levert." },
@@ -547,8 +569,21 @@ h3{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:.0
 .legend i{display:inline-block;width:26px;height:0;border-top:4px solid}
 .legend i.dash{border-top:2px dashed var(--sig)}
 .board{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.board-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-svg.schema{display:block;width:100%;min-width:900px;height:auto;font-family:var(--f-body)}
+.viewport{position:relative;overflow:hidden;touch-action:pan-y}
+.viewport.zoomed{touch-action:none}
+.viewport.zoomed svg.schema{cursor:grab}
+svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/920;font-family:var(--f-body);user-select:none;-webkit-user-select:none}
+.zoombar{position:absolute;right:8px;bottom:8px;display:flex;gap:6px}
+@media (max-width:600px){.zb{width:34px;height:34px;border-radius:8px}.zb svg{width:18px;height:18px}}
+.zb{width:40px;height:40px;border-radius:10px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;
+  box-shadow:0 1px 4px #0003;color:var(--ink)}
+.zb:hover,.zb:focus-visible{border-color:var(--accent);color:var(--accent);outline:none}
+.zb svg{width:20px;height:20px}
+.board.full{position:fixed;inset:0;z-index:20;border:0;border-radius:0;display:flex;flex-direction:column}
+.board.full .viewport{flex:1;min-height:0;touch-action:none}
+.board.full svg.schema{height:100%;aspect-ratio:auto}
+.board.full .board-foot{display:none}
+.board.full .zoombar{flex-direction:column;right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom))}
 .board-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1px solid var(--line)}
 /* SVG */
 .zone{fill:var(--zone);stroke:none}
@@ -590,7 +625,7 @@ svg.run-prim .f-prim, svg.run-heat .f-heat, svg.run-dhw .f-dhw, svg.run-tap .f-t
 svg.run-eout .f-eout{display:inline;--sp:var(--sp-eout)} svg.run-ein .f-ein{display:inline;--sp:var(--sp-ein)}
 svg.mode-heat .b-dhw, svg.mode-dhw .b-heat{opacity:.3}
 svg.run-vraag .s-vraag{stroke:var(--hot);animation:sig 1s linear infinite} @keyframes sig{to{stroke-dashoffset:-18}}
-.fan{transform-box:view-box;transform-origin:120px 228px}
+.fan{transform-box:fill-box;transform-origin:center}
 svg.run-fan .fan{animation:spin var(--sp-fan,1.4s) linear infinite} @keyframes spin{to{transform:rotate(360deg)}}
 svg.run-refr .compbody{stroke:var(--refr);stroke-width:2.6}
 svg.run-pump1 .pumpbody{stroke:var(--accent);stroke-width:2.6}
@@ -658,8 +693,15 @@ const TEMPLATE = (floors) => `
   <main class="wrap">
     <div class="banners" id="banners"></div>
     <section class="kpis" id="kpis" aria-label="Kerncijfers"></section>
-    <div class="board">
-      <div class="board-scroll">${schemaSvg(floors)}</div>
+    <div class="board" id="board">
+      <div class="viewport" id="vp">${schemaSvg(floors)}
+        <div class="zoombar">
+          <button class="zb" id="z-in" aria-label="Inzoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button class="zb" id="z-out" aria-label="Uitzoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+          <button class="zb" id="z-fit" aria-label="Hele schema tonen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1.5"/><path d="M9 10l-2 2 2 2M15 10l2 2-2 2"/></svg></button>
+          <button class="zb" id="z-full" aria-label="Volledig scherm"></button>
+        </div>
+      </div>
       <div class="board-foot">
         <div class="legend" aria-label="Legenda">
           <span><i style="border-color:var(--hot)"></i>aanvoer (warm water erheen)</span>
@@ -670,7 +712,7 @@ const TEMPLATE = (floors) => `
           <span><i style="border-color:var(--elec)"></i>stroom 230 V</span>
           <span><i class="dash"></i>stuursignaal</span>
         </div>
-        <span class="legend">Lopende bolletjes = er stroomt nu iets · op een telefoon kun je het schema opzij schuiven</span>
+        <span class="legend">Lopende bolletjes = er stroomt nu iets · knijp, dubbeltik of gebruik + om in te zoomen, sleep om te schuiven</span>
       </div>
     </div>
     <div class="grid">
@@ -706,7 +748,7 @@ function mountDashboard(host, root) {
   $("#menu").appendChild(host._menu);
 
   const svg = $("#schema"), detail = $("#detail");
-  const st = { sel: null, selKey: null, sig: "", measured: { out: null, in: null, src: null }, midnight: null, timers: [] };
+  const st = { sel: null, selKey: null, sig: "", measured: { out: null, in: null, src: null }, midnight: null, timers: [], tankHist: [] };
   const S = id => (id ? host._hass.states[id] : undefined);
   const ok = s => s && s.state !== "unavailable" && s.state !== "unknown";
   const num = id => { const s = S(id); if (!ok(s)) return null; const v = parseFloat(s.state); return isFinite(v) ? v : null; };
@@ -716,7 +758,11 @@ function mountDashboard(host, root) {
 
   /* entiteitenlijst */
   const byKey = {};
-  $("#groups").innerHTML = G.map(g => `<div class="group"><h3>${g.title}</h3><p class="gnote">${g.note}</p><ul class="ents">` +
+  const rooms = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => ({ k: `room_${fi}_${j}`, n: r.naam, c: "tstat",
+    x: "Temperatuur van de slimme meter naast de kamerthermostaat. De thermostaat zelf is niet slim en niet zichtbaar in Home Assistant.",
+    now: X => { const v = X.rooms[fi]?.[j]; return v?.t == null ? "" : `${f.naam.charAt(0) + f.naam.slice(1).toLowerCase()}: ${fmt(v.t, 1)} °C.`; } })));
+  const groups = rooms.length ? [...G.slice(0, 5), { title: "Kamertemperaturen", note: "Slimme temperatuurmeters naast de kamerthermostaten.", items: rooms }, ...G.slice(5)] : G;
+  $("#groups").innerHTML = groups.map(g => `<div class="group"><h3>${g.title}</h3><p class="gnote">${g.note}</p><ul class="ents">` +
     g.items.map(e => { byKey[e.k] = e;
       return `<li><button type="button" data-e="${e.k}"><span class="ename">${e.n}</span><span class="evalue" data-v="${e.k}"></span><span class="eid" data-id="${e.k}"></span></button></li>`; }).join("") +
     `</ul></div>`).join("");
@@ -738,16 +784,28 @@ function mountDashboard(host, root) {
     X.pOut = watt(R.p_out); X.pIn = watt(R.p_in);
     X.eOutTot = kwh(R.e_out); X.eInTot = kwh(R.e_in);
     X.tapFlow = num(R.tap);
-    const running = (X.freq || 0) > 0 || !!X.pump1;
+    // afkoeling van het vat in het laatste venster, uit de bijgehouden THW5-historie
+    const ts = S(R.tank), th = st.tankHist;
+    if (ok(ts)) { const t = Date.parse(ts.last_changed) || Date.now(), v = parseFloat(ts.state);
+      if (isFinite(v) && (!th.length || th[th.length - 1].t !== t)) th.push({ t, v }); }
+    const from = Date.now() - TAP_WIN;
+    while (th.length > 1 && th[1].t <= from) th.shift();               // houd één punt vóór het venster als beginstand
+    X.tankDrop = th.length && X.tank != null ? Math.max(...th.map(p => p.v)) - X.tank : 0;
+    X.hotDraw = X.tapFlow > 0 && X.tankDrop >= TAP_DROP;
+    X.compRun = X.freq > 0 || X.pOut > P_RUN;
+    X.compByMeter = X.compRun && !(X.freq > 0);                       // de meter ziet het al, MELCloud nog niet
+    const running = X.compRun || !!X.pump1;
     X.mode = !running ? "rust" : X.dhw ? (X.bh1 ? "legionella" : "tapwater") : "verwarming";
     // kamers
     X.rooms = R.floors.map(f => f.kamers.map(r => {
       const s = S(r.ent); if (!ok(s)) return null;
       const a = s.attributes, t = r.ent.startsWith("climate.") ? parseFloat(a.current_temperature) : parseFloat(s.state);
-      return { t: isFinite(t) ? t : null, sp: parseFloat(a.temperature), heat: a.hvac_action === "heating" };
+      return { t: isFinite(t) ? t : null, sp: parseFloat(a.temperature), heat: a.hvac_action === "heating", climate: r.ent.startsWith("climate.") };
     }));
-    const vr = bin(R.vraag);
-    X.vraag = vr != null ? vr : X.rooms.flat().some(r => r && r.heat);
+    // warmtevraag: uit een eigen signaal, uit slimme thermostaten (hvac_action), of afgeleid uit de warmtepomp
+    const vr = bin(R.vraag), clim = X.rooms.flat().filter(r => r && r.climate);
+    X.vraagSrc = vr != null ? "signaal" : clim.length ? "thermostaat" : "afgeleid";
+    X.vraag = vr != null ? vr : clim.length ? clim.some(r => r.heat) : X.mode === "verwarming";
     // vandaag gemeten (teller nu − teller om middernacht), anders uit de 5-minutenstatistiek
     const m = st.measured;
     const today = (tot, mid) => tot != null && mid != null && tot >= mid ? tot - mid : null;
@@ -756,8 +814,15 @@ function mountDashboard(host, root) {
     X.mTot = X.mOut != null || X.mIn != null ? (X.mOut || 0) + (X.mIn || 0) : null;
     X.prodTot = X.heat_prod != null || X.dhw_prod != null ? (X.heat_prod || 0) + (X.dhw_prod || 0) : null;
     X.consTot = X.heat_cons != null || X.dhw_cons != null ? (X.heat_cons || 0) + (X.dhw_cons || 0) : null;
-    X.copMeas = X.prodTot != null && X.mTot > 0.05 ? X.prodTot / X.mTot : null;
-    X.copMel = X.prodTot != null && X.consTot > 0.05 ? X.prodTot / X.consTot : null;
+    // MELCloud werkt de dagtotalen met vertraging bij. Is geen ervan sinds middernacht veranderd, dan horen ze bij een
+    // eerdere dag en zijn ze niet te vergelijken met wat de kWh-meters vandaag gemeten hebben.
+    const mid = new Date(); mid.setHours(0, 0, 0, 0);
+    const daily = ["heat_prod", "heat_cons", "dhw_prod", "dhw_cons"].map(k => S(R[k])).filter(ok);
+    X.dailySince = daily.length ? Math.max(...daily.map(s => Date.parse(s.last_changed) || 0)) : null;
+    X.dailyFresh = X.dailySince != null && X.dailySince >= mid.getTime();
+    const cop = X.dailyFresh && X.prodTot != null && X.mTot > 0.05 ? X.prodTot / X.mTot : null;
+    X.copMeas = cop != null && cop <= 8 ? cop : null;   // hoger kan fysiek niet: dan lopen MELCloud en de meters uit de pas
+    X.copMel = X.prodTot != null && X.consTot > 0.2 ? X.prodTot / X.consTot : null;
     return X;
   }
 
@@ -771,7 +836,7 @@ function mountDashboard(host, root) {
     if (id.startsWith("water_heater.")) return `${esc(X.whMode || s.state)} · doel ${fmt(X.target, 0)} <span class="unit">°C</span>`;
     const v = parseFloat(s.state);
     if (!isFinite(v)) return esc(s.state);
-    const u = unitOf(e.k), d = /kWh|COP/.test(u) || /cop|prod|cons/.test(e.k) ? 2 : u === "°C" ? 1 : u === "W" ? 0 : (Math.abs(v) < 10 && v % 1 ? 2 : 0);
+    const u = unitOf(e.k), d = /kWh|COP/.test(u) || /cop|prod|cons/.test(e.k) ? 2 : u === "°C" || /\/min/i.test(u) ? 1 : u === "W" ? 0 : (Math.abs(v) < 10 && v % 1 ? 2 : 0);
     return `${fmt(v, d)}${u ? ` <span class="unit">${esc(u)}</span>` : ""}`;
   }
 
@@ -784,15 +849,16 @@ function mountDashboard(host, root) {
     st.X = X;
     // schema: stromen
     const run = {
-      "run-refr": X.freq > 0, "run-fan": X.freq > 0, "run-pump1": !!X.pump1,
+      "run-refr": X.compRun, "run-fan": X.compRun, "run-pump1": !!X.pump1,
       "run-prim": !!X.pump1, "run-heat": !!X.pump1 && !X.dhw, "run-dhw": !!X.pump1 && X.dhw,
       "mode-heat": !!X.pump1 && !X.dhw, "mode-dhw": !!X.pump1 && X.dhw,
       "run-eout": X.pOut > P_IDLE, "run-ein": X.pIn > P_IDLE, "run-bh1": !!X.bh1, "imm-on": !!X.imm,
-      "run-tap": X.tapFlow > 0, "run-vraag": !!X.vraag,
+      "run-tap": !!X.hotDraw, "run-vraag": !!X.vraag,
     };
     for (const [c, on] of Object.entries(run)) svg.classList.toggle(c, on);
-    svg.style.setProperty("--sp-refr", clamp(2.2 - (X.freq || 0) / 50, 0.45, 2.2).toFixed(2) + "s");
-    svg.style.setProperty("--sp-fan", clamp(2.4 - (X.freq || 0) / 40, 0.5, 2.4).toFixed(2) + "s");
+    const fEff = X.freq > 0 ? X.freq : (X.pOut || 0) / 25;          // zonder frequentie: grove schatting uit het vermogen
+    svg.style.setProperty("--sp-refr", clamp(2.2 - fEff / 50, 0.45, 2.2).toFixed(2) + "s");
+    svg.style.setProperty("--sp-fan", clamp(2.4 - fEff / 40, 0.5, 2.4).toFixed(2) + "s");
     svg.style.setProperty("--sp-eout", clamp(2.4 - (X.pOut || 0) / 500, 0.4, 2.4).toFixed(2) + "s");
     svg.style.setProperty("--sp-ein", clamp(2.4 - (X.pIn || 0) / 1000, 0.4, 2.4).toFixed(2) + "s");
     $("#port-heat").classList.toggle("on", !!X.pump1 && !X.dhw);
@@ -801,7 +867,7 @@ function mountDashboard(host, root) {
 
     // schema: waarden
     setT("v-buiten", deg(X.buiten));
-    setT("v-freq", X.freq == null ? "–" : fmt(X.freq, 0) + " Hz", X.freq > 0 ? "" : "off");
+    setT("v-freq", X.freq > 0 ? fmt(X.freq, 0) + " Hz" : X.compByMeter ? "draait" : X.freq == null ? "–" : "0 Hz", X.compRun ? "" : "off");
     setT("v-cond", deg(X.cond), X.freq > 0 ? "" : "off");
     setT("v-bh1", onoff(X.bh1), X.bh1 ? "hotv" : "off");
     setT("v-pump1", onoff(X.pump1), X.pump1 ? "" : "off");
@@ -810,6 +876,9 @@ function mountDashboard(host, root) {
     setT("v-dt", X.pump1 && X.dT != null ? "ΔT " + fmt(X.dT, 1) : "");
     setT("v-klep", X.klep == null ? "–" : X.dhw ? "→ vat" : "→ vloer", X.pump1 ? "" : "off");
     setT("v-tank", deg(X.tank));
+    const lpm = v => fmt(v, v < 10 ? 1 : 0) + " " + (unitOf("tap") || "l/min");
+    setT("v-tap", !X.tapFlow ? "" : lpm(X.tapFlow), X.hotDraw ? "" : "off");
+    setT("v-tap2", !X.tapFlow ? "" : X.hotDraw ? "via het vat" : "niet via het vat", X.hotDraw ? "" : "off");
     setT("v-target", X.target == null ? "" : `doel ${fmt(X.target, 0)} °C${X.whMode ? " · " + X.whMode : ""}`);
     setT("v-wifi", X.wifi == null ? "–" : fmt(X.wifi, 0) + " dBm", X.wifi != null && X.wifi < -75 ? "warnv" : "");
     setT("v-boiler", `${onoff(X.boiler)} · ${deg(X.boiler_flow)}`, "off");
@@ -820,8 +889,9 @@ function mountDashboard(host, root) {
     setT("v-eout", X.mOut == null ? "" : fmt(X.mOut, 2) + " kWh");
     setT("v-ein", X.mIn == null ? "" : fmt(X.mIn, 2) + " kWh");
     setT("v-meter1", X.mTot == null ? "Geen verbruik van vandaag beschikbaar (geen energieteller of statistiek gevonden)."
-      : `Vandaag gemeten: ${fmt(X.mTot, 2)} kWh${X.consTot != null ? ` · MELCloud schat ${fmt(X.consTot, 2)} kWh` : ""}${st.measured.src === "statistiek" ? " (uit vermogensstatistiek)" : ""}.`);
-    setT("v-meter2", X.copMeas == null ? "" : `Warmte vandaag ${fmt(X.prodTot, 2)} kWh ÷ gemeten stroom = COP ${fmt(X.copMeas, 2)} (gemeten).`);
+      : `Vandaag gemeten: ${fmt(X.mTot, 2)} kWh${X.consTot != null && X.dailyFresh ? ` · MELCloud schat ${fmt(X.consTot, 2)} kWh` : ""}${st.measured.src === "statistiek" ? " (uit vermogensstatistiek)" : ""}.`);
+    setT("v-meter2", X.copMeas != null ? `Warmte vandaag ${fmt(X.prodTot, 2)} kWh ÷ gemeten stroom = COP ${fmt(X.copMeas, 2)} (gemeten).`
+      : X.consTot != null && !X.dailyFresh ? `MELCloud-dagwaarden zijn van ${dagTijd(X.dailySince)}: nog geen gemeten COP.` : "");
     R.floors.forEach((f, fi) => {
       const anyHeat = (X.rooms[fi] || []).some(r => r && r.heat);
       $$(`.regel[data-floor="${fi}"]`).forEach(el => el.classList.toggle("heat", anyHeat));
@@ -845,17 +915,20 @@ function mountDashboard(host, root) {
     const kpi = (c, k, v, u, s) => `<button class="kpi" data-c="${c}"><span class="k">${k}</span><span class="v">${v}${u ? ` <small>${u}</small>` : ""}</span><span class="s">${s || "&nbsp;"}</span></button>`;
     $("#kpis").innerHTML = [
       kpi("th7", "Buiten", fmt(X.buiten, 1), "°C", X.opmode ? "regeling: " + esc(X.opmode) : ""),
-      kpi("comp", "Compressor", X.freq == null ? "–" : fmt(X.freq, 0), "Hz", X.freq > 0 ? "draait" : "staat stil"),
+      kpi("comp", "Compressor", X.freq > 0 ? fmt(X.freq, 0) : X.compByMeter ? "aan" : X.freq == null ? "–" : "0", X.compByMeter ? "" : "Hz",
+          X.freq > 0 ? "draait" : X.compByMeter ? "volgens de kWh-meter; Hz volgt via MELCloud" : "staat stil"),
       kpi("thw1", "Aanvoer / retour", `${fmt(X.aanvoer, 1)} / ${fmt(X.retour, 1)}`, "°C", X.pump1 && X.dT != null ? "ΔT " + fmt(X.dT, 1) + " °C" : "pomp staat stil"),
       kpi("thw5", "Tapwater", fmt(X.tank, 1), "°C", X.target != null ? "doel " + fmt(X.target, 0) + " °C" : ""),
       kpi("meterOut", "Vermogen nu", X.pOut == null && X.pIn == null ? "–" : fmt((X.pOut || 0) + (X.pIn || 0), 0), "W",
           X.pOut != null || X.pIn != null ? `buiten ${fmt(X.pOut, 0)} · binnen ${fmt(X.pIn, 0)}` : ""),
-      kpi("ftc", "Warmte vandaag", fmt(X.prodTot, 2), "kWh", X.heat_prod != null ? `vloer ${fmt(X.heat_prod, 2)} · tap ${fmt(X.dhw_prod, 2)}` : ""),
-      kpi("meterOut", "COP vandaag", fmt(X.copMeas ?? X.copMel, 2), "", X.copMeas != null ? "met gemeten stroom" : X.copMel != null ? "schatting MELCloud" : "nog te weinig gedraaid"),
+      kpi("ftc", X.dailyFresh || X.dailySince == null ? "Warmte vandaag" : "Warmte (MELCloud-dag)", fmt(X.prodTot, 2), "kWh",
+          (X.heat_prod != null ? `vloer ${fmt(X.heat_prod, 2)} · tap ${fmt(X.dhw_prod, 2)}` : "") + (X.dailySince && !X.dailyFresh ? ` · stand ${dagTijd(X.dailySince)}` : "")),
+      kpi("meterOut", X.dailyFresh || X.dailySince == null ? "COP vandaag" : "COP (MELCloud-dag)", fmt(X.copMeas ?? X.copMel, 2), "",
+          X.copMeas != null ? "met gemeten stroom" : X.copMel != null ? (X.dailyFresh ? "schatting MELCloud" : "schatting MELCloud, laatste dagwaarde") : "nog te weinig gedraaid"),
     ].join("");
 
     // entiteitenlijst
-    G.forEach(g => g.items.forEach(e => {
+    groups.forEach(g => g.items.forEach(e => {
       const v = root.querySelector(`[data-v="${e.k}"]`); if (v) v.innerHTML = valueHtml(e, X);
       const i = root.querySelector(`[data-id="${e.k}"]`); if (i) i.textContent = e.dis ? "entiteit uitgeschakeld in Home Assistant" : (R[e.k] || `niet gevonden · override-sleutel "${e.k}"`);
     }));
@@ -887,20 +960,27 @@ function mountDashboard(host, root) {
 
   function renderNow(X) {
     const li = [];
-    if (X.mode === "rust") li.push(`<b>De installatie staat in rust.</b> Compressor ${X.freq == null ? "–" : fmt(X.freq, 0) + " Hz"}, pomp 1 uit${X.bh1 ? "" : ", geen elektrische bijverwarming"}.`);
-    else if (X.mode === "verwarming") li.push(`<b>Ruimteverwarming.</b> Compressor ${fmt(X.freq, 0)} Hz, aanvoer ${deg(X.aanvoer)}, retour ${deg(X.retour)}${X.dT != null ? `, ΔT ${fmt(X.dT, 1)} °C` : ""}. Het water gaat naar de verdelers.`);
+    const hz = X.freq > 0 ? fmt(X.freq, 0) + " Hz" : X.compByMeter ? "aan (volgens de kWh-meter)" : X.freq == null ? "–" : "0 Hz";
+    if (X.compByMeter) li.push(`<b>De compressor draait</b> volgens de kWh-meter van de buitenunit (${fmt(X.pOut, 0)} W). MELCloud meldt nog 0 Hz; de frequentie en de andere waarden volgen over een paar minuten.`);
+    if (X.mode === "rust") li.push(`<b>De installatie staat in rust.</b> Compressor ${hz}, pomp 1 uit${X.bh1 ? "" : ", geen elektrische bijverwarming"}.`);
+    else if (X.mode === "verwarming") li.push(`<b>Ruimteverwarming.</b> Compressor ${hz}, aanvoer ${deg(X.aanvoer)}, retour ${deg(X.retour)}${X.dT != null ? `, ΔT ${fmt(X.dT, 1)} °C` : ""}. Het water gaat naar de verdelers.`);
     else li.push(`<b>Tapwater wordt opgewarmd.</b> Vat ${deg(X.tank)}${X.target != null ? `, doel ${fmt(X.target, 0)} °C` : ""}; aanvoer ${deg(X.aanvoer)}. De vloeren krijgen nu geen warmte: tapwater gaat voor.${X.bh1 ? " De booster heater helpt mee." : ""}`);
     if (X.freq > 0 && !X.pump1) li.push(`De compressor draait maar pomp 1 staat (nog) uit: meestal een opstart- of ontdooimoment, of MELCloud loopt achter.`);
     if (X.pump1 && !X.freq) li.push(`Pomp 1 draait zonder compressor: nadraaien na een run, of ontdooien.`);
-    if (X.vraag != null && R.floors.some(f => f.kamers.some(r => r.ent)) || R.vraag)
-      li.push(X.vraag ? `<b>Er is warmtevraag</b> vanuit ${R.vraag ? "het warmtevraagsignaal" : "minstens één thermostaat"}.` : `Geen van de thermostaten vraagt nu warmte.`);
+    if (X.vraagSrc !== "afgeleid")
+      li.push(X.vraag ? `<b>Er is warmtevraag</b> vanuit ${X.vraagSrc === "signaal" ? "het warmtevraagsignaal" : "minstens één thermostaat"}.` : `Geen van de thermostaten vraagt nu warmte.`);
+    const kamers = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => [r.naam, X.rooms[fi]?.[j]?.t])).filter(([, t]) => t != null);
+    if (kamers.length) li.push(`<b>Kamers:</b> ${kamers.map(([n, t]) => `${esc(n)} ${fmt(t, 1)} °C`).join(" · ")}.`);
+    if (X.hotDraw) li.push(`<b>Er wordt warm water getapt.</b> De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))} en het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld: er stroomt koud leidingwater het vat in.`);
+    else if (X.tapFlow > 0) li.push(`De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))}, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan, dus niet via de Ecodan.`);
     if (X.tank != null && X.target != null && X.mode !== "tapwater" && X.mode !== "legionella") {
       const d = X.target - X.tank;
       li.push(d <= 0 ? `<b>Het vat is op temperatuur</b> (${deg(X.tank)}).` : `<b>Vat ${deg(X.tank)}</b>, ${fmt(d, 1)} °C onder het doel. ${d <= 8 ? "Binnen de marge (hysterese), dus de warmtepomp start nog niet." : "Tapwater-opwarming volgt binnenkort."}`);
     }
-    if (X.dhw_prod != null) li.push(`<b>Tapwater vandaag:</b> ${fmt(X.dhw_cons, 2)} kWh stroom in, ${fmt(X.dhw_prod, 2)} kWh warmte uit${X.dhw_cons > 0.05 ? `: COP ${fmt(X.dhw_prod / X.dhw_cons, 2)}` : ""}.`);
-    if (X.heat_prod != null) li.push(`<b>Vloerverwarming vandaag:</b> ${fmt(X.heat_cons, 2)} kWh stroom in, ${fmt(X.heat_prod, 2)} kWh warmte uit${X.heat_cons > 0.05 ? `: COP ${fmt(X.heat_prod / X.heat_cons, 2)}` : ": te weinig om een COP te berekenen"}.`);
-    if (X.mTot != null) li.push(`<b>Gemeten in de meterkast vandaag:</b> ${fmt(X.mTot, 2)} kWh${X.consTot != null ? ` tegen ${fmt(X.consTot, 2)} kWh volgens MELCloud` : ""}${X.copMeas != null ? `. Echte COP vandaag: <b>${fmt(X.copMeas, 2)}</b>` : ""}.`);
+    const dag = X.dailyFresh || X.dailySince == null ? "vandaag" : `(MELCloud-dagwaarde van ${dagTijd(X.dailySince)})`;
+    if (X.dhw_prod != null) li.push(`<b>Tapwater ${dag}:</b> ${fmt(X.dhw_cons, 2)} kWh stroom in, ${fmt(X.dhw_prod, 2)} kWh warmte uit${X.dhw_cons > 0.2 ? `: COP ${fmt(X.dhw_prod / X.dhw_cons, 2)}` : ""}.`);
+    if (X.heat_prod != null) li.push(`<b>Vloerverwarming ${dag}:</b> ${fmt(X.heat_cons, 2)} kWh stroom in, ${fmt(X.heat_prod, 2)} kWh warmte uit${X.heat_cons > 0.2 ? `: COP ${fmt(X.heat_prod / X.heat_cons, 2)}` : ": te weinig om een COP te berekenen"}.`);
+    if (X.mTot != null) li.push(`<b>Gemeten in de meterkast vandaag:</b> ${fmt(X.mTot, 2)} kWh${X.consTot != null && X.dailyFresh ? ` tegen ${fmt(X.consTot, 2)} kWh volgens MELCloud` : ""}${X.copMeas != null ? `. Echte COP vandaag: <b>${fmt(X.copMeas, 2)}</b>` : ""}.`);
     if (X.pOut != null || X.pIn != null)
       li.push(`<b>Stroom nu: ${fmt(X.pOut, 0)} W buiten, ${fmt(X.pIn, 0)} W binnen.</b> ${X.pOut < P_IDLE && X.pIn < P_IDLE ? "Alleen stand-by." : X.pIn > 1500 ? "De booster heater staat aan." : ""}`);
     $("#nowlist").innerHTML = li.map(t => `<li>${t}</li>`).join("");
@@ -947,7 +1027,7 @@ function mountDashboard(host, root) {
     if (more) { host.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: more.dataset.more }, bubbles: true, composed: true })); return; }
     const b = ev.target.closest("button[data-e]"); if (b) { showEnt(b.dataset.e); return; }
     const k = ev.target.closest(".kpi"); if (k) { showComp(k.dataset.c); detail.scrollIntoView({ behavior: "smooth", block: "nearest" }); return; }
-    if (ev.target.closest("svg.schema")) { const g = ev.target.closest(".comp"); if (g) showComp(g.dataset.c); else clearSel(); }
+    if (ev.target.closest("svg.schema")) { if (st.moved > 8) return; const g = ev.target.closest(".comp"); if (g) showComp(g.dataset.c); else clearSel(); }
   });
   svg.addEventListener("keydown", ev => {
     if (ev.key !== "Enter" && ev.key !== " ") return;
@@ -957,6 +1037,77 @@ function mountDashboard(host, root) {
     b.addEventListener("mouseenter", () => highlight(byKey[b.dataset.e].c));
     b.addEventListener("mouseleave", () => highlight(st.sel));
   });
+
+  /* zoomen en schuiven: de viewBox volgt schaal s (css-px per tekeneenheid) en middelpunt (cx, cy) */
+  const VB = { w: 1200, h: 920 }, vp = $("#vp"), board = $("#board");
+  const zm = { s: 0, cx: VB.w / 2, cy: VB.h / 2, fit: true };
+  const box = () => { const r = svg.getBoundingClientRect(); return { l: r.left, t: r.top, W: r.width || 1, H: r.height || 1 }; };
+  const fitS = () => { const b = box(); return Math.min(b.W / VB.w, b.H / VB.h); };
+  function applyZoom() {
+    const { W, H } = box(), s0 = fitS();
+    if (zm.fit || !zm.s) { zm.s = s0; zm.cx = VB.w / 2; zm.cy = VB.h / 2; }
+    zm.s = clamp(zm.s, s0, Math.max(s0 * 8, 3));
+    const vw = W / zm.s, vh = H / zm.s;
+    zm.cx = vw >= VB.w ? VB.w / 2 : clamp(zm.cx, vw / 2, VB.w - vw / 2);
+    zm.cy = vh >= VB.h ? VB.h / 2 : clamp(zm.cy, vh / 2, VB.h - vh / 2);
+    svg.setAttribute("viewBox", `${(zm.cx - vw / 2).toFixed(1)} ${(zm.cy - vh / 2).toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}`);
+    zm.fit = zm.s <= s0 * 1.001;
+    vp.classList.toggle("zoomed", !zm.fit);
+  }
+  // zoom met factor f rond schermpunt (px, py): dat punt blijft op zijn plek
+  function zoomAt(f, px, py) {
+    const { l, t, W, H } = box(), dx = px - l - W / 2, dy = py - t - H / 2;
+    const ux = zm.cx + dx / zm.s, uy = zm.cy + dy / zm.s;
+    zm.fit = false; zm.s *= f; zm.cx = ux - dx / zm.s; zm.cy = uy - dy / zm.s;
+    applyZoom();
+  }
+  const zoomMid = f => { const { l, t, W, H } = box(); zoomAt(f, l + W / 2, t + H / 2); };
+  const ptrs = new Map();
+  const centroid = () => { const v = [...ptrs.values()], n = v.length;
+    return [v.reduce((a, p) => a + p.x, 0) / n, v.reduce((a, p) => a + p.y, 0) / n, n > 1 ? Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y) : 0]; };
+  svg.addEventListener("pointerdown", e => {
+    if (!ptrs.size) st.moved = 0;
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  });
+  svg.addEventListener("pointermove", e => {
+    if (!ptrs.has(e.pointerId)) return;
+    const [x0, y0, d0] = centroid(); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); const [x1, y1, d1] = centroid();
+    if (ptrs.size === 1 && zm.fit) return;          // niet ingezoomd: één vinger scrolt gewoon de pagina
+    st.moved += Math.abs(x1 - x0) + Math.abs(y1 - y0) + Math.abs(d1 - d0);
+    if (st.moved > 8 && !svg.hasPointerCapture(e.pointerId)) { try { svg.setPointerCapture(e.pointerId); } catch (_) {} }
+    zm.cx -= (x1 - x0) / zm.s; zm.cy -= (y1 - y0) / zm.s;
+    if (ptrs.size > 1 && d0 > 0) zoomAt(d1 / d0, x1, y1); else applyZoom();
+  });
+  const up = e => ptrs.delete(e.pointerId);
+  svg.addEventListener("pointerup", up); svg.addEventListener("pointercancel", up);
+  svg.addEventListener("wheel", e => {
+    if (e.ctrlKey) { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY); }
+    else if (!zm.fit) { e.preventDefault(); zm.cx += e.deltaX / zm.s; zm.cy += e.deltaY / zm.s; applyZoom(); }
+  }, { passive: false });
+  svg.addEventListener("dblclick", e => { e.preventDefault(); if (zm.s > fitS() * 3.5) { zm.fit = true; applyZoom(); } else zoomAt(2, e.clientX, e.clientY); });
+  $("#z-in").onclick = () => zoomMid(1.5);
+  $("#z-out").onclick = () => zoomMid(1 / 1.5);
+  $("#z-fit").onclick = () => { zm.fit = true; applyZoom(); };
+  const ICON_FULL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>`;
+  const ICON_EXIT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>`;
+  // volledig scherm: het schema vult het hele scherm en begint zo groot dat het de hoogte of breedte vult
+  function setFull(on) {
+    board.classList.toggle("full", on);
+    const b = $("#z-full"); b.innerHTML = on ? ICON_EXIT : ICON_FULL; b.setAttribute("aria-label", on ? "Volledig scherm sluiten" : "Volledig scherm");
+    requestAnimationFrame(() => {
+      const { W, H } = box();
+      zm.fit = !on; zm.s = on ? Math.max(W / VB.w, H / VB.h) : 0; zm.cx = VB.w / 2; zm.cy = VB.h / 2; applyZoom();
+    });
+    if (on && board.requestFullscreen) board.requestFullscreen().then(() => { st.realFs = true; }, () => {});
+    if (!on && st.realFs) { st.realFs = false; if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
+  }
+  $("#z-full").innerHTML = ICON_FULL;
+  $("#z-full").onclick = () => setFull(!board.classList.contains("full"));
+  const onFs = () => { if (!document.fullscreenElement && st.realFs) { st.realFs = false; setFull(false); } };
+  const onKey = e => { if (e.key === "Escape" && board.classList.contains("full")) setFull(false); };
+  document.addEventListener("fullscreenchange", onFs); document.addEventListener("keydown", onKey);
+  const ro = new ResizeObserver(() => applyZoom()); ro.observe(vp);
+  requestAnimationFrame(applyZoom);
 
   /* thema: de knop onthoudt de keuze per apparaat; anders geldt de optie uit Configureren */
   const storedTheme = () => { try { return localStorage.getItem("ecodash-theme"); } catch (e) { return null; } };
@@ -1014,13 +1165,27 @@ function mountDashboard(host, root) {
     st.sig = sig; render();
   }
   host._onHass = schedule;
-  render(); loadMeasured();
+  /* tanktemperatuur van het laatste venster, zodat afkoeling ook direct na het openen herkend wordt */
+  async function loadTankHist() {
+    if (!R.tank) return;
+    try {
+      const start = new Date(Date.now() - TAP_WIN);
+      const res = await host._hass.callWS({ type: "history/history_during_period", start_time: start.toISOString(), entity_ids: [R.tank],
+        include_start_time_state: true, minimal_response: true, no_attributes: true, significant_changes_only: false });
+      const pts = (res?.[R.tank] || []).map(h => ({ t: h.lu != null ? h.lu * 1000 : Date.parse(h.last_changed), v: parseFloat(h.s ?? h.state) }))
+        .filter(p => isFinite(p.v) && isFinite(p.t));
+      const live = st.tankHist.filter(p => !pts.length || p.t > pts[pts.length - 1].t);
+      st.tankHist = pts.concat(live); st.sig = ""; schedule();
+    } catch (e) { console.warn("Ecodan-panel: historie tanktemperatuur niet beschikbaar", e); }
+  }
+  render(); loadMeasured(); loadTankHist();
   st.timers.push(setInterval(() => {
     const mid = new Date(); mid.setHours(0, 0, 0, 0);
     if (mid.getTime() !== st.midnight || st.measured.src === "statistiek") loadMeasured();   // nieuwe dag, of statistiek bijwerken
     else { st.sig = ""; schedule(); }                                                         // "geen nieuwe waarden"-check
   }, 5 * 60e3));
-  return () => { st.timers.forEach(clearInterval); cancelAnimationFrame(raf); host._onHass = null; };
+  return () => { st.timers.forEach(clearInterval); cancelAnimationFrame(raf); host._onHass = null; ro.disconnect();
+    document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("keydown", onKey); };
 }
 
 class EcodashPanel extends HTMLElement {
