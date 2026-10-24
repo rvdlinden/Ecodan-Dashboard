@@ -39,7 +39,7 @@
         "data_description": {
           "prefix": "Het stuk tussen het domein en de sensornaam, bijv. technische_ruimte_ecodan voor sensor.technische_ruimte_ecodan_tanktemperatuur.",
           "klep_aan_is_tapwater": "Zet dit uit als het schema verwarming toont terwijl het vat wordt opgewarmd.",
-          "overrides": "Bijv. {\"water_heater\": \"water_heater.ecodan\"}. Leeg laten voor automatische detectie. Alle sleutels staan in de README.",
+          "overrides": "Bijv. water_heater: water_heater.ecodan. Leeg laten voor automatische detectie. Alle sleutels staan in de README.",
           "thema": "Standaard voor iedereen. De zon/maan-knop in het panel overschrijft dit per apparaat."
         }
       }
