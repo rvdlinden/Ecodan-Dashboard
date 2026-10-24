@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.2.0";
+const ECODASH_VERSION = "1.3.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -251,6 +251,8 @@ function schemaSvg(floors) {
   <g class="comp" data-c="comp" data-also="meterOut" tabindex="0" role="button" aria-label="Compressor">
     <rect class="hit" x="196" y="200" width="74" height="130"/>
     <rect class="shape compbody" x="208" y="236" width="50" height="72" rx="22"/>
+    <clipPath id="compClip"><rect x="211" y="239" width="44" height="66" rx="19"/></clipPath>
+    <g clip-path="url(#compClip)"><path class="sine" id="sine" d="M203,272 H263"/></g>
     <text class="t s" x="233" y="326" text-anchor="middle">compressor</text>
     <text class="val" id="v-freq" x="233" y="226" text-anchor="middle"></text>
   </g>
@@ -628,6 +630,8 @@ svg.run-vraag .s-vraag{stroke:var(--hot);animation:sig 1s linear infinite} @keyf
 .fan{transform-box:fill-box;transform-origin:center}
 svg.run-fan .fan{animation:spin var(--sp-fan,1.4s) linear infinite} @keyframes spin{to{transform:rotate(360deg)}}
 svg.run-refr .compbody{stroke:var(--refr);stroke-width:2.6}
+.sine{fill:none;stroke:var(--off);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+svg.run-refr .sine{stroke:var(--refr)}
 svg.run-pump1 .pumpbody{stroke:var(--accent);stroke-width:2.6}
 svg.run-bh1 .coilheat{stroke:var(--hot);stroke-width:2.2;animation:glow 1.2s ease-in-out infinite alternate}
 @keyframes glow{from{opacity:.45}to{opacity:1}}
@@ -840,6 +844,24 @@ function mountDashboard(host, root) {
     return `${fmt(v, d)}${u ? ` <span class="unit">${esc(u)}</span>` : ""}`;
   }
 
+  /* sinusgolf in de compressor: meer golven en sneller bij een hogere frequentie, vlakke lijn als hij stilstaat */
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  function drawSine(f) {
+    const key = Math.round(f / 2);                  // alleen opnieuw tekenen bij een merkbaar andere frequentie
+    if (key === st.sineKey) return;
+    st.sineKey = key;
+    const el = $("#sine"); st.sineAnim?.cancel(); st.sineAnim = null;
+    if (!(f > 0)) { el.setAttribute("d", "M203,272 H263"); return; }
+    const cycles = clamp(f / 25, 0.8, 4.5);         // zichtbare golven in de 44 eenheden brede behuizing
+    const L = 44 / cycles, A = 13, x0 = 211 - L, x1 = 255 + L;
+    let d = "";
+    for (let x = x0; x <= x1 + 0.01; x += 1) d += (d ? " L" : "M") + x.toFixed(1) + "," + (272 - A * Math.sin(2 * Math.PI * (x - 211) / L)).toFixed(1);
+    el.setAttribute("d", d);
+    if (!reduceMotion && el.animate)                 // één golflengte opschuiven en herhalen: naadloos
+      st.sineAnim = el.animate([{ transform: "translateX(0px)" }, { transform: `translateX(${L.toFixed(2)}px)` }],
+        { duration: 1000 * clamp(1.2 - f / 120, 0.25, 1.2), iterations: Infinity, easing: "linear" });
+  }
+
   /* weergave */
   const setT = (id, txt, cls = "") => { const el = $("#" + id); if (!el) return; el.textContent = txt; el.setAttribute("class", el.getAttribute("class").replace(/\s?(off|hotv|warnv)\b/g, "") + (cls ? " " + cls : "")); };
   const deg = v => (v == null ? "–" : fmt(v, 1) + " °C");
@@ -859,6 +881,7 @@ function mountDashboard(host, root) {
     const fEff = X.freq > 0 ? X.freq : (X.pOut || 0) / 25;          // zonder frequentie: grove schatting uit het vermogen
     svg.style.setProperty("--sp-refr", clamp(2.2 - fEff / 50, 0.45, 2.2).toFixed(2) + "s");
     svg.style.setProperty("--sp-fan", clamp(2.4 - fEff / 40, 0.5, 2.4).toFixed(2) + "s");
+    drawSine(X.compRun ? fEff : 0);
     svg.style.setProperty("--sp-eout", clamp(2.4 - (X.pOut || 0) / 500, 0.4, 2.4).toFixed(2) + "s");
     svg.style.setProperty("--sp-ein", clamp(2.4 - (X.pIn || 0) / 1000, 0.4, 2.4).toFixed(2) + "s");
     $("#port-heat").classList.toggle("on", !!X.pump1 && !X.dhw);
