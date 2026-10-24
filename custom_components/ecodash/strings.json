@@ -39,7 +39,7 @@
         "data_description": {
           "prefix": "The part between the domain and the sensor name, e.g. technische_ruimte_ecodan for sensor.technische_ruimte_ecodan_tanktemperatuur.",
           "klep_aan_is_tapwater": "Turn this off if the diagram shows heating while the tank is being heated.",
-          "overrides": "E.g. {\"water_heater\": \"water_heater.ecodan\"}. Leave empty for automatic detection. See the README for all keys.",
+          "overrides": "E.g. water_heater: water_heater.ecodan. Leave empty for automatic detection. See the README for all keys.",
           "thema": "Default for everyone. The sun/moon button in the panel overrides it per device."
         }
       }
