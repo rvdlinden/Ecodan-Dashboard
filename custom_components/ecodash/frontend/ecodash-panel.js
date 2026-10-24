@@ -47,6 +47,11 @@ const DEFAULT_FLOORS = [
   { naam: "BEGANE GROND", kamers: [{ naam: "Woonkamer", entity: "sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur" }] },
 ];
 const P_IDLE = 30;            // W: daaronder is een groep in stand-by (regelaar, wifi)
+// De watermeter meet al het water in huis. Alleen als het vat tegelijk afkoelt (er stroomt koud water in omdat er
+// warm water getapt wordt) loopt de stroom via het vat. 1 °C, omdat MELCloud THW5 in stappen van 0,5 °C meldt
+// en het vat in rust ook langzaam afkoelt.
+const TAP_DROP = 1.0;         // °C afkoeling van het vat ...
+const TAP_WIN = 15 * 60e3;    // ... binnen dit venster
 
 const slug = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
@@ -96,7 +101,8 @@ function resolveEntities(hass, cfg) {
   r.e_in = pick(ov.e_in) || energyOf("binnenunit", r.p_in);
 
   // optioneel: tapwaterdebiet en warmtevraag
-  r.tap = pick(ov.tapwater_debiet);
+  r.tap = pick(ov.tapwater_debiet) || (has("sensor.meterkast_watermeter_water_gebruik") ? "sensor.meterkast_watermeter_water_gebruik"
+    : ids.find(id => id.startsWith("sensor.") && id.includes("watermeter") && /_(water_gebruik|active_water_usage)$/.test(id)) || null);
   r.vraag = pick(ov.warmtevraag);
 
   // verdiepingen en kamers; thermostaten worden gezocht op kamernaam (climate.woonkamer of naam "Woonkamer")
@@ -219,6 +225,8 @@ function schemaSvg(floors) {
   <text class="t s" x="356" y="446">warm tapwater</text>
   <text class="t s" x="364" y="474">naar de kranen</text>
   <text class="t s" x="356" y="726">koud leidingwater</text>
+  <text class="val sm" id="v-tap" x="356" y="754"></text>
+  <text class="val sm" id="v-tap2" x="356" y="767"></text>
 
   <path class="sig s-vraag" d="M1180,579 V56 H750 V125 H740"/>
   <text class="t s" x="1170" y="50" text-anchor="end">warmtevraag aan/uit → FTC6</text>
@@ -407,7 +415,7 @@ const C = {
   tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit; het geeft zijn warmte af via de spiraal. De kleur in het vat volgt de tanktemperatuur." },
   coil: { name: "Spiraal in het vat", where: "In het tapwatervat", text: "Als de 3-wegklep op tapwater staat, stroomt het warme verwarmingswater door deze spiraal en warmt zo het vat op." },
   imm: { name: "Dompelaar (immersion heater)", where: "Zou in het vat zitten", text: "Een optioneel elektrisch element direct in het tapwatervat. De standaard EHST20D-uitvoeringen hebben er geen; de entiteit bestaat omdat de regelaar het wel kán aansturen." },
-  thw5: { name: "Tankvoeler THW5", where: "Halverwege het vat", text: "Temperatuur van het tapwater. Zakt die onder de ingestelde waarde min de hysterese (vaak 5–10 °C), dan schakelt de warmtepomp naar tapwater." },
+  thw5: { name: "Tankvoeler THW5", where: "Halverwege het vat", text: "Temperatuur van het tapwater. Zakt die onder de ingestelde waarde min de hysterese (vaak 5–10 °C), dan schakelt de warmtepomp naar tapwater. Tap je warm water, dan stroomt er onderin koud leidingwater bij en zakt deze temperatuur; daaraan herkent het panel dat het water via het vat loopt." },
   cyl: { name: "Cilinderunit EHST20D-VM2D", where: "Technische ruimte", text: "Alles-in-één binnenunit: platenwisselaar, pomp, 3-wegklep, 2 kW booster heater, expansievat, regelaar en een 200 L tapwatervat in één kast. 'VM2' = 1-fase, 2 kW booster heater. De H in EHST staat voor alleen verwarmen: deze unit kan niet koelen." },
   manifold: { name: "Vloerverwarmingsverdelers", where: "Eén per verdieping", text: "Verdelen het warme water over 4–5 lussen per verdieping. Elke lus is een slang die door één kamer (of een deel ervan) in de dekvloer loopt en afgekoeld terugkomt." },
   act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' bovenop de verdeler die een lus open of dicht zetten. Ze worden aangestuurd door de thermostaat van de kamer. Niet zichtbaar in MELCloud." },
@@ -456,6 +464,8 @@ const G = [
         : `${fmt(d, 1)} °C onder het doel: de warmtepomp schakelt binnenkort naar tapwater.`; } },
     { k: "water_heater", n: "Ecodan (bediening tapwater)", c: "tank", x: "De bedienknop voor het tapwater. Hier stel je de gewenste vattemperatuur en de modus in. 'Huidige temperatuur' is dezelfde meting als Tanktemperatuur (THW5).",
       now: X => X.target == null ? "" : `Modus ${esc(X.whMode || "–")}, doel ${fmt(X.target, 0)} °C.` },
+    { k: "tap", n: "Waterverbruik (watermeter)", c: "tank", x: `De watermeter in de meterkast meet al het water in huis, ook voor toilet en koude kranen. Het schema toont alleen stroming door het vat als het vat tegelijk minstens ${fmt(TAP_DROP, 1)} °C afkoelt binnen ${TAP_WIN / 60e3} minuten. Doordat MELCloud de tanktemperatuur met vertraging doorgeeft, start dat pas na een paar minuten; korte tapbeurten (handen wassen) zie je niet.`,
+      now: X => !X.tapFlow ? "Er stroomt nu geen water." : X.hotDraw ? `Er wordt warm water getapt: het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld.` : "Er stroomt water, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan." },
     { k: "imm", n: "Immersion heater", c: "imm", now: X => X.imm ? "Aan! Onverwacht: bij de EHST20D-VM2D zit normaal geen dompelaar." : "Uit. Bij jouw model is er waarschijnlijk geen dompelaar ingebouwd, dus dit blijft altijd uit." },
   ]},
   { title: "Regelaar, energie en verbinding", note: "Waarden die de FTC6 berekent of over zichzelf rapporteert.", items: [
@@ -733,7 +743,7 @@ function mountDashboard(host, root) {
   $("#menu").appendChild(host._menu);
 
   const svg = $("#schema"), detail = $("#detail");
-  const st = { sel: null, selKey: null, sig: "", measured: { out: null, in: null, src: null }, midnight: null, timers: [] };
+  const st = { sel: null, selKey: null, sig: "", measured: { out: null, in: null, src: null }, midnight: null, timers: [], tankHist: [] };
   const S = id => (id ? host._hass.states[id] : undefined);
   const ok = s => s && s.state !== "unavailable" && s.state !== "unknown";
   const num = id => { const s = S(id); if (!ok(s)) return null; const v = parseFloat(s.state); return isFinite(v) ? v : null; };
@@ -769,6 +779,14 @@ function mountDashboard(host, root) {
     X.pOut = watt(R.p_out); X.pIn = watt(R.p_in);
     X.eOutTot = kwh(R.e_out); X.eInTot = kwh(R.e_in);
     X.tapFlow = num(R.tap);
+    // afkoeling van het vat in het laatste venster, uit de bijgehouden THW5-historie
+    const ts = S(R.tank), th = st.tankHist;
+    if (ok(ts)) { const t = Date.parse(ts.last_changed) || Date.now(), v = parseFloat(ts.state);
+      if (isFinite(v) && (!th.length || th[th.length - 1].t !== t)) th.push({ t, v }); }
+    const from = Date.now() - TAP_WIN;
+    while (th.length > 1 && th[1].t <= from) th.shift();               // houd één punt vóór het venster als beginstand
+    X.tankDrop = th.length && X.tank != null ? Math.max(...th.map(p => p.v)) - X.tank : 0;
+    X.hotDraw = X.tapFlow > 0 && X.tankDrop >= TAP_DROP;
     const running = (X.freq || 0) > 0 || !!X.pump1;
     X.mode = !running ? "rust" : X.dhw ? (X.bh1 ? "legionella" : "tapwater") : "verwarming";
     // kamers
@@ -811,7 +829,7 @@ function mountDashboard(host, root) {
     if (id.startsWith("water_heater.")) return `${esc(X.whMode || s.state)} · doel ${fmt(X.target, 0)} <span class="unit">°C</span>`;
     const v = parseFloat(s.state);
     if (!isFinite(v)) return esc(s.state);
-    const u = unitOf(e.k), d = /kWh|COP/.test(u) || /cop|prod|cons/.test(e.k) ? 2 : u === "°C" ? 1 : u === "W" ? 0 : (Math.abs(v) < 10 && v % 1 ? 2 : 0);
+    const u = unitOf(e.k), d = /kWh|COP/.test(u) || /cop|prod|cons/.test(e.k) ? 2 : u === "°C" || /\/min/i.test(u) ? 1 : u === "W" ? 0 : (Math.abs(v) < 10 && v % 1 ? 2 : 0);
     return `${fmt(v, d)}${u ? ` <span class="unit">${esc(u)}</span>` : ""}`;
   }
 
@@ -828,7 +846,7 @@ function mountDashboard(host, root) {
       "run-prim": !!X.pump1, "run-heat": !!X.pump1 && !X.dhw, "run-dhw": !!X.pump1 && X.dhw,
       "mode-heat": !!X.pump1 && !X.dhw, "mode-dhw": !!X.pump1 && X.dhw,
       "run-eout": X.pOut > P_IDLE, "run-ein": X.pIn > P_IDLE, "run-bh1": !!X.bh1, "imm-on": !!X.imm,
-      "run-tap": X.tapFlow > 0, "run-vraag": !!X.vraag,
+      "run-tap": !!X.hotDraw, "run-vraag": !!X.vraag,
     };
     for (const [c, on] of Object.entries(run)) svg.classList.toggle(c, on);
     svg.style.setProperty("--sp-refr", clamp(2.2 - (X.freq || 0) / 50, 0.45, 2.2).toFixed(2) + "s");
@@ -850,6 +868,9 @@ function mountDashboard(host, root) {
     setT("v-dt", X.pump1 && X.dT != null ? "ΔT " + fmt(X.dT, 1) : "");
     setT("v-klep", X.klep == null ? "–" : X.dhw ? "→ vat" : "→ vloer", X.pump1 ? "" : "off");
     setT("v-tank", deg(X.tank));
+    const lpm = v => fmt(v, v < 10 ? 1 : 0) + " " + (unitOf("tap") || "l/min");
+    setT("v-tap", !X.tapFlow ? "" : lpm(X.tapFlow), X.hotDraw ? "" : "off");
+    setT("v-tap2", !X.tapFlow ? "" : X.hotDraw ? "via het vat" : "niet via het vat", X.hotDraw ? "" : "off");
     setT("v-target", X.target == null ? "" : `doel ${fmt(X.target, 0)} °C${X.whMode ? " · " + X.whMode : ""}`);
     setT("v-wifi", X.wifi == null ? "–" : fmt(X.wifi, 0) + " dBm", X.wifi != null && X.wifi < -75 ? "warnv" : "");
     setT("v-boiler", `${onoff(X.boiler)} · ${deg(X.boiler_flow)}`, "off");
@@ -939,6 +960,8 @@ function mountDashboard(host, root) {
       li.push(X.vraag ? `<b>Er is warmtevraag</b> vanuit ${X.vraagSrc === "signaal" ? "het warmtevraagsignaal" : "minstens één thermostaat"}.` : `Geen van de thermostaten vraagt nu warmte.`);
     const kamers = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => [r.naam, X.rooms[fi]?.[j]?.t])).filter(([, t]) => t != null);
     if (kamers.length) li.push(`<b>Kamers:</b> ${kamers.map(([n, t]) => `${esc(n)} ${fmt(t, 1)} °C`).join(" · ")}.`);
+    if (X.hotDraw) li.push(`<b>Er wordt warm water getapt.</b> De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))} en het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld: er stroomt koud leidingwater het vat in.`);
+    else if (X.tapFlow > 0) li.push(`De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))}, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan, dus niet via de Ecodan.`);
     if (X.tank != null && X.target != null && X.mode !== "tapwater" && X.mode !== "legionella") {
       const d = X.target - X.tank;
       li.push(d <= 0 ? `<b>Het vat is op temperatuur</b> (${deg(X.tank)}).` : `<b>Vat ${deg(X.tank)}</b>, ${fmt(d, 1)} °C onder het doel. ${d <= 8 ? "Binnen de marge (hysterese), dus de warmtepomp start nog niet." : "Tapwater-opwarming volgt binnenkort."}`);
@@ -1131,7 +1154,20 @@ function mountDashboard(host, root) {
     st.sig = sig; render();
   }
   host._onHass = schedule;
-  render(); loadMeasured();
+  /* tanktemperatuur van het laatste venster, zodat afkoeling ook direct na het openen herkend wordt */
+  async function loadTankHist() {
+    if (!R.tank) return;
+    try {
+      const start = new Date(Date.now() - TAP_WIN);
+      const res = await host._hass.callWS({ type: "history/history_during_period", start_time: start.toISOString(), entity_ids: [R.tank],
+        include_start_time_state: true, minimal_response: true, no_attributes: true, significant_changes_only: false });
+      const pts = (res?.[R.tank] || []).map(h => ({ t: h.lu != null ? h.lu * 1000 : Date.parse(h.last_changed), v: parseFloat(h.s ?? h.state) }))
+        .filter(p => isFinite(p.v) && isFinite(p.t));
+      const live = st.tankHist.filter(p => !pts.length || p.t > pts[pts.length - 1].t);
+      st.tankHist = pts.concat(live); st.sig = ""; schedule();
+    } catch (e) { console.warn("Ecodan-panel: historie tanktemperatuur niet beschikbaar", e); }
+  }
+  render(); loadMeasured(); loadTankHist();
   st.timers.push(setInterval(() => {
     const mid = new Date(); mid.setHours(0, 0, 0, 0);
     if (mid.getTime() !== st.midnight || st.measured.src === "statistiek") loadMeasured();   // nieuwe dag, of statistiek bijwerken

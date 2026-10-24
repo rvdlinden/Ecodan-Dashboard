@@ -16,6 +16,8 @@ kWh-meters in de meterkast die je al in HA hebt.
     gebruik is wordt gedimd en de actieve klepuitgang kleurt rood.
   - Stroom (geel) van de meterkast naar de buiten- en binnenunit zodra een groep meer dan 30 W
     (stand-by) gebruikt; sneller bij meer vermogen.
+  - Tapwater: koud leidingwater het vat in en warm water naar de kranen, alleen als er echt
+    warm water getapt wordt (zie *Tapwater en de watermeter*).
   - De booster heater gloeit als hij aan staat; de kleur in het tapwatervat volgt de
     tanktemperatuur.
   - Warmtevraag: draait de warmtepomp op ruimteverwarming, dan kleurt het signaal naar de FTC6
@@ -164,7 +166,7 @@ Sleutels voor losse entiteiten: `buiten`, `freq`, `cond`, `aanvoer`, `retour`, `
 |---|---|
 | `verdiepingen` | Indeling van de woning (max. 3 verdiepingen, max. 4 kamers per verdieping), van boven naar beneden. Een kamer is een naam of `{naam, entity}` met een temperatuursensor of climate-entiteit; met `entity: false` zoekt het panel niets |
 | `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Zonder deze sleutel geldt: warmtevraag = een climate-entiteit met `hvac_action: heating`, of anders: de warmtepomp draait op ruimteverwarming |
-| `tapwater_debiet` | Een sensor voor waterdoorstroming (bijv. een watermeter). Boven 0 lopen er bolletjes over de tapwaterleidingen. Een watermeter meet al het water in huis, niet alleen warm water |
+| `tapwater_debiet` | Sensor voor de actuele waterdoorstroming. Standaard `sensor.meterkast_watermeter_water_gebruik` (zie *Tapwater en de watermeter*) |
 
 Een voorbeeld:
 
@@ -182,6 +184,21 @@ verdiepingen:
     kamers: [Woonkamer]
 tapwater_debiet: sensor.watermeter_actueel_waterverbruik
 ```
+
+### Tapwater en de watermeter
+
+De Ecodan neemt zelf geen water uit de waterleiding: het verwarmingscircuit is gesloten. Het vat
+krijgt alleen koud leidingwater binnen als er ergens warm water getapt wordt. De watermeter
+(`sensor.meterkast_watermeter_water_gebruik`) meet al het water in huis, dus ook toilet en koude
+kranen. Daarom toont het schema de stroming door het vat alleen als er water stroomt **én** het
+vat (THW5) in de laatste 15 minuten minstens 1 °C is afgekoeld. Stroomt er water zonder dat het vat
+afkoelt, dan staat bij de koudwaterleiding *niet via het vat*.
+
+Beperkingen:
+- MELCloud geeft de tanktemperatuur met een paar minuten vertraging door, in stappen van 0,5 °C. De
+  stroming verschijnt dus pas als het afkoelen gemeld is, en korte tapbeurten (handen wassen) zie
+  je niet.
+- Tot 15 minuten na een douchebeurt wordt ook een toiletspoeling als *via het vat* getoond.
 
 ## Hoe het werkt
 
