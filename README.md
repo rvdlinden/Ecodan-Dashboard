@@ -10,7 +10,10 @@ kWh-meters in de meterkast die je al in HA hebt.
   thermostaten per verdieping en de kWh-meters in de meterkast.
 - **Live stromen:** lopende bolletjes laten zien waar nu iets stroomt.
   - Koudemiddel (paars) zodra de compressor draait; sneller bij een hoger toerental. De
-    ventilator in de buitenunit draait mee.
+    ventilator in de buitenunit draait mee en bij de compressor staat de frequentie. MELCloud geeft
+    de frequentie pas na een paar minuten door. Meet de kWh-meter van de buitenunit al meer dan
+    150 W, dan draaien ventilator en koudemiddel meteen mee en staat er *draait* tot de frequentie
+    binnenkomt.
   - Verwarmingswater zodra pomp 1 draait. De 3-wegklep bepaalt de route: naar de verdelers
     en vloerlussen (verwarming) óf door de spiraal in het vat (tapwater). De tak die niet in
     gebruik is wordt gedimd en de actieve klepuitgang kleurt rood.

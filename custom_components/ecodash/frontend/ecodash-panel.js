@@ -47,6 +47,9 @@ const DEFAULT_FLOORS = [
   { naam: "BEGANE GROND", kamers: [{ naam: "Woonkamer", entity: "sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur" }] },
 ];
 const P_IDLE = 30;            // W: daaronder is een groep in stand-by (regelaar, wifi)
+// Boven dit vermogen op de groep van de buitenunit draaien compressor en ventilator. De kWh-meter reageert direct,
+// MELCloud geeft de frequentie pas na een paar minuten door; zo draait de ventilator meteen mee.
+const P_RUN = 150;
 // De watermeter meet al het water in huis. Alleen als het vat tegelijk afkoelt (er stroomt koud water in omdat er
 // warm water getapt wordt) loopt de stroom via het vat. 1 °C, omdat MELCloud THW5 in stappen van 0,5 °C meldt
 // en het vat in rust ook langzaam afkoelt.
@@ -237,6 +240,7 @@ function schemaSvg(floors) {
     <text class="t s" x="54" y="132">buitenunit</text>
     <circle class="shape soft" cx="120" cy="228" r="62"/>
     <g class="fill-muted fan" opacity=".55">
+      <circle cx="120" cy="228" r="58" fill="none" stroke="none"/>
       <ellipse cx="120" cy="198" rx="11" ry="26"/>
       <ellipse cx="120" cy="198" rx="11" ry="26" transform="rotate(120 120 228)"/>
       <ellipse cx="120" cy="198" rx="11" ry="26" transform="rotate(240 120 228)"/>
@@ -400,7 +404,7 @@ function schemaSvg(floors) {
 
 /* ------------------------- onderdelen ------------------------------ */
 const C = {
-  outdoor: { name: "Buitenunit SUZ-SWM60 VA", where: "Tuin", text: "De eigenlijke warmtepomp. De ventilator blaast buitenlucht langs de verdamper; het koude koudemiddel neemt daar warmte op, ook als het buiten koud is. Een 6 kW-unit (SWM60). Er loopt geen water naar buiten, alleen twee koudemiddelleidingen. In het schema draait de ventilator mee zodra de compressor draait." },
+  outdoor: { name: "Buitenunit SUZ-SWM60 VA", where: "Tuin", text: "De eigenlijke warmtepomp. De ventilator blaast buitenlucht langs de verdamper; het koude koudemiddel neemt daar warmte op, ook als het buiten koud is. Een 6 kW-unit (SWM60). Er loopt geen water naar buiten, alleen twee koudemiddelleidingen. In het schema draait de ventilator mee zodra de compressor draait: volgens MELCloud (frequentie boven 0 Hz) of al eerder volgens de kWh-meter (meer dan 150 W op de groep van de buitenunit)." },
   comp: { name: "Compressor", where: "In de buitenunit", text: "Het hart van de warmtepomp. Drukt het koudemiddel samen, waardoor het heet wordt. Het is een inverter: het toerental (in Hz) past zich aan de vraag aan. 0 Hz = uit." },
   th7: { name: "Buitenvoeler TH7", where: "Achterkant buitenunit", text: "Meet de buitentemperatuur. De regelaar gebruikt die voor de stooklijn: hoe kouder het buiten is, hoe warmer het water naar de vloeren gaat." },
   refr: { name: "Koudemiddelleidingen (R32)", where: "Tussen tuin en technische ruimte", text: "Twee koperen leidingen: een dikke gasleiding (heet gas naar binnen) en een dunne vloeistofleiding (terug naar buiten). Dit is een split-systeem: het koudemiddel komt tot in de cilinderunit. De paarse bolletjes lopen zodra de compressor draait; hoe hoger het toerental, hoe sneller." },
@@ -437,7 +441,8 @@ const G = [
       ? "Vorst: de stooklijn vraagt een hoge aanvoertemperatuur en de booster heater kan bijspringen."
       : X.buiten < 7 ? "Koud: de stooklijn vraagt een hogere aanvoertemperatuur."
       : X.buiten < 16 ? "Mild weer: de stooklijn vraagt een lage aanvoertemperatuur." : "Warm: er is weinig of geen verwarmingsvraag." },
-    { k: "freq", n: "Heat pump frequency", c: "comp", now: X => !X.freq ? "0 Hz: de compressor staat stil."
+    { k: "freq", n: "Heat pump frequency", c: "comp", now: X => X.compByMeter ? `MELCloud meldt nog 0 Hz, maar de kWh-meter van de buitenunit meet ${fmt(X.pOut, 0)} W: de compressor draait al. De frequentie volgt over een paar minuten.`
+      : !X.freq ? "0 Hz: de compressor staat stil."
       : `De compressor draait op ${fmt(X.freq, 0)} Hz` + (X.freq < 35 ? ": laag toerental, rustig modulerend en zuinig." : X.freq > 70 ? ": hoog toerental, grote vraag (tapwater of kou)." : ".") },
     { k: "cond", n: "Condensing temperature", c: "hex", x: "Temperatuur waarbij het koudemiddel in de platenwisselaar condenseert, dus waar de warmte aan het water wordt afgegeven. Wordt gemeten in de buitenunit, maar hoort fysiek bij de platenwisselaar.",
       now: X => !X.freq ? "Bij stilstand zakt het koudemiddel richting omgevingstemperatuur."
@@ -620,7 +625,7 @@ svg.run-prim .f-prim, svg.run-heat .f-heat, svg.run-dhw .f-dhw, svg.run-tap .f-t
 svg.run-eout .f-eout{display:inline;--sp:var(--sp-eout)} svg.run-ein .f-ein{display:inline;--sp:var(--sp-ein)}
 svg.mode-heat .b-dhw, svg.mode-dhw .b-heat{opacity:.3}
 svg.run-vraag .s-vraag{stroke:var(--hot);animation:sig 1s linear infinite} @keyframes sig{to{stroke-dashoffset:-18}}
-.fan{transform-box:view-box;transform-origin:120px 228px}
+.fan{transform-box:fill-box;transform-origin:center}
 svg.run-fan .fan{animation:spin var(--sp-fan,1.4s) linear infinite} @keyframes spin{to{transform:rotate(360deg)}}
 svg.run-refr .compbody{stroke:var(--refr);stroke-width:2.6}
 svg.run-pump1 .pumpbody{stroke:var(--accent);stroke-width:2.6}
@@ -787,7 +792,9 @@ function mountDashboard(host, root) {
     while (th.length > 1 && th[1].t <= from) th.shift();               // houd één punt vóór het venster als beginstand
     X.tankDrop = th.length && X.tank != null ? Math.max(...th.map(p => p.v)) - X.tank : 0;
     X.hotDraw = X.tapFlow > 0 && X.tankDrop >= TAP_DROP;
-    const running = (X.freq || 0) > 0 || !!X.pump1;
+    X.compRun = X.freq > 0 || X.pOut > P_RUN;
+    X.compByMeter = X.compRun && !(X.freq > 0);                       // de meter ziet het al, MELCloud nog niet
+    const running = X.compRun || !!X.pump1;
     X.mode = !running ? "rust" : X.dhw ? (X.bh1 ? "legionella" : "tapwater") : "verwarming";
     // kamers
     X.rooms = R.floors.map(f => f.kamers.map(r => {
@@ -842,15 +849,16 @@ function mountDashboard(host, root) {
     st.X = X;
     // schema: stromen
     const run = {
-      "run-refr": X.freq > 0, "run-fan": X.freq > 0, "run-pump1": !!X.pump1,
+      "run-refr": X.compRun, "run-fan": X.compRun, "run-pump1": !!X.pump1,
       "run-prim": !!X.pump1, "run-heat": !!X.pump1 && !X.dhw, "run-dhw": !!X.pump1 && X.dhw,
       "mode-heat": !!X.pump1 && !X.dhw, "mode-dhw": !!X.pump1 && X.dhw,
       "run-eout": X.pOut > P_IDLE, "run-ein": X.pIn > P_IDLE, "run-bh1": !!X.bh1, "imm-on": !!X.imm,
       "run-tap": !!X.hotDraw, "run-vraag": !!X.vraag,
     };
     for (const [c, on] of Object.entries(run)) svg.classList.toggle(c, on);
-    svg.style.setProperty("--sp-refr", clamp(2.2 - (X.freq || 0) / 50, 0.45, 2.2).toFixed(2) + "s");
-    svg.style.setProperty("--sp-fan", clamp(2.4 - (X.freq || 0) / 40, 0.5, 2.4).toFixed(2) + "s");
+    const fEff = X.freq > 0 ? X.freq : (X.pOut || 0) / 25;          // zonder frequentie: grove schatting uit het vermogen
+    svg.style.setProperty("--sp-refr", clamp(2.2 - fEff / 50, 0.45, 2.2).toFixed(2) + "s");
+    svg.style.setProperty("--sp-fan", clamp(2.4 - fEff / 40, 0.5, 2.4).toFixed(2) + "s");
     svg.style.setProperty("--sp-eout", clamp(2.4 - (X.pOut || 0) / 500, 0.4, 2.4).toFixed(2) + "s");
     svg.style.setProperty("--sp-ein", clamp(2.4 - (X.pIn || 0) / 1000, 0.4, 2.4).toFixed(2) + "s");
     $("#port-heat").classList.toggle("on", !!X.pump1 && !X.dhw);
@@ -859,7 +867,7 @@ function mountDashboard(host, root) {
 
     // schema: waarden
     setT("v-buiten", deg(X.buiten));
-    setT("v-freq", X.freq == null ? "–" : fmt(X.freq, 0) + " Hz", X.freq > 0 ? "" : "off");
+    setT("v-freq", X.freq > 0 ? fmt(X.freq, 0) + " Hz" : X.compByMeter ? "draait" : X.freq == null ? "–" : "0 Hz", X.compRun ? "" : "off");
     setT("v-cond", deg(X.cond), X.freq > 0 ? "" : "off");
     setT("v-bh1", onoff(X.bh1), X.bh1 ? "hotv" : "off");
     setT("v-pump1", onoff(X.pump1), X.pump1 ? "" : "off");
@@ -907,7 +915,8 @@ function mountDashboard(host, root) {
     const kpi = (c, k, v, u, s) => `<button class="kpi" data-c="${c}"><span class="k">${k}</span><span class="v">${v}${u ? ` <small>${u}</small>` : ""}</span><span class="s">${s || "&nbsp;"}</span></button>`;
     $("#kpis").innerHTML = [
       kpi("th7", "Buiten", fmt(X.buiten, 1), "°C", X.opmode ? "regeling: " + esc(X.opmode) : ""),
-      kpi("comp", "Compressor", X.freq == null ? "–" : fmt(X.freq, 0), "Hz", X.freq > 0 ? "draait" : "staat stil"),
+      kpi("comp", "Compressor", X.freq > 0 ? fmt(X.freq, 0) : X.compByMeter ? "aan" : X.freq == null ? "–" : "0", X.compByMeter ? "" : "Hz",
+          X.freq > 0 ? "draait" : X.compByMeter ? "volgens de kWh-meter; Hz volgt via MELCloud" : "staat stil"),
       kpi("thw1", "Aanvoer / retour", `${fmt(X.aanvoer, 1)} / ${fmt(X.retour, 1)}`, "°C", X.pump1 && X.dT != null ? "ΔT " + fmt(X.dT, 1) + " °C" : "pomp staat stil"),
       kpi("thw5", "Tapwater", fmt(X.tank, 1), "°C", X.target != null ? "doel " + fmt(X.target, 0) + " °C" : ""),
       kpi("meterOut", "Vermogen nu", X.pOut == null && X.pIn == null ? "–" : fmt((X.pOut || 0) + (X.pIn || 0), 0), "W",
@@ -951,8 +960,10 @@ function mountDashboard(host, root) {
 
   function renderNow(X) {
     const li = [];
-    if (X.mode === "rust") li.push(`<b>De installatie staat in rust.</b> Compressor ${X.freq == null ? "–" : fmt(X.freq, 0) + " Hz"}, pomp 1 uit${X.bh1 ? "" : ", geen elektrische bijverwarming"}.`);
-    else if (X.mode === "verwarming") li.push(`<b>Ruimteverwarming.</b> Compressor ${fmt(X.freq, 0)} Hz, aanvoer ${deg(X.aanvoer)}, retour ${deg(X.retour)}${X.dT != null ? `, ΔT ${fmt(X.dT, 1)} °C` : ""}. Het water gaat naar de verdelers.`);
+    const hz = X.freq > 0 ? fmt(X.freq, 0) + " Hz" : X.compByMeter ? "aan (volgens de kWh-meter)" : X.freq == null ? "–" : "0 Hz";
+    if (X.compByMeter) li.push(`<b>De compressor draait</b> volgens de kWh-meter van de buitenunit (${fmt(X.pOut, 0)} W). MELCloud meldt nog 0 Hz; de frequentie en de andere waarden volgen over een paar minuten.`);
+    if (X.mode === "rust") li.push(`<b>De installatie staat in rust.</b> Compressor ${hz}, pomp 1 uit${X.bh1 ? "" : ", geen elektrische bijverwarming"}.`);
+    else if (X.mode === "verwarming") li.push(`<b>Ruimteverwarming.</b> Compressor ${hz}, aanvoer ${deg(X.aanvoer)}, retour ${deg(X.retour)}${X.dT != null ? `, ΔT ${fmt(X.dT, 1)} °C` : ""}. Het water gaat naar de verdelers.`);
     else li.push(`<b>Tapwater wordt opgewarmd.</b> Vat ${deg(X.tank)}${X.target != null ? `, doel ${fmt(X.target, 0)} °C` : ""}; aanvoer ${deg(X.aanvoer)}. De vloeren krijgen nu geen warmte: tapwater gaat voor.${X.bh1 ? " De booster heater helpt mee." : ""}`);
     if (X.freq > 0 && !X.pump1) li.push(`De compressor draait maar pomp 1 staat (nog) uit: meestal een opstart- of ontdooimoment, of MELCloud loopt achter.`);
     if (X.pump1 && !X.freq) li.push(`Pomp 1 draait zonder compressor: nadraaien na een run, of ontdooien.`);
