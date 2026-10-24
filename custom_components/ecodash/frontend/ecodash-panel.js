@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.4.0";
+const ECODASH_VERSION = "1.4.1";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -171,11 +171,18 @@ function curveSvg(curve) {
     <rect class="hit" x="600" y="820" width="584" height="184"/>
     <text class="zlabel" x="616" y="846">STOOKLIJN</text>
     <text class="t s" x="1168" y="846" text-anchor="end">${lbl}</text>`;
-  for (let v = 20; v <= 60; v += 10)
-    s += `<line class="cgrid" x1="${CV.x0}" x2="${CV.x1}" y1="${cvy(v)}" y2="${cvy(v)}"/>` + (v % 20 ? "" : `<text class="t s" x="${CV.x0 - 6}" y="${cvy(v) + 3.5}" text-anchor="end">${v}°</text>`);
-  for (let t = -30; t <= 30; t += 10)
-    s += `<line class="caxis" x1="${cvx(t)}" x2="${cvx(t)}" y1="${CV.y0}" y2="${CV.y0 + 4}"/><text class="t s" x="${cvx(t)}" y="${CV.y0 + 15}" text-anchor="middle">${fmt(t, 0)}</text>`;
-  s += `<text class="t s" x="1168" y="${CV.y0 + 15}" text-anchor="end">buiten</text>
+  // raster en waarden om de 5 °C (om de 10 °C iets sterker), kleine streepjes om de 2 °C
+  for (let v = 20; v <= 60; v += 5)
+    s += `<line class="${v % 10 ? "cgrid2" : "cgrid"}" x1="${CV.x0}" x2="${CV.x1}" y1="${cvy(v)}" y2="${cvy(v)}"/>`
+      + `<line class="caxis" x1="${CV.x0 - 5}" x2="${CV.x0}" y1="${cvy(v)}" y2="${cvy(v)}"/>`
+      + `<text class="t s" x="${CV.x0 - 8}" y="${cvy(v) + 3.5}" text-anchor="end">${v}°</text>`;
+  for (let t = CV.t0; t <= CV.t1; t += 5)
+    s += `<line class="${t % 10 ? "cgrid2" : "cgrid"}" x1="${cvx(t)}" x2="${cvx(t)}" y1="860" y2="${CV.y0}"/>`
+      + `<line class="caxis" x1="${cvx(t)}" x2="${cvx(t)}" y1="${CV.y0}" y2="${CV.y0 + 5}"/>`
+      + (t <= 30 ? `<text class="t s" x="${cvx(t)}" y="${CV.y0 + 16}" text-anchor="middle">${fmt(t, 0)}</text>` : "");
+  for (let v = 20; v <= 60; v += 2) s += `<line class="ctick" x1="${CV.x0 - 2.5}" x2="${CV.x0}" y1="${cvy(v)}" y2="${cvy(v)}"/>`;
+  for (let t = CV.t0; t <= CV.t1; t += 2) s += `<line class="ctick" x1="${cvx(t)}" x2="${cvx(t)}" y1="${CV.y0}" y2="${CV.y0 + 2.5}"/>`;
+  s += `<text class="t s" x="1168" y="${CV.y0 + 16}" text-anchor="end">buiten</text>
     <line class="caxis" x1="${CV.x0}" y1="${CV.y0}" x2="${CV.x1}" y2="${CV.y0}"/><line class="caxis" x1="${CV.x0}" y1="860" x2="${CV.x0}" y2="${CV.y0}"/>`;
   const line = [[CV.t0, curve.pts[0][1]], ...curve.pts, [CV.t1, curve.pts[curve.pts.length - 1][1]]];
   s += `<polyline class="curve" points="${line.map(([t, v]) => cvx(t).toFixed(1) + "," + cvy(v).toFixed(1)).join(" ")}"/>`;
@@ -183,6 +190,11 @@ function curveSvg(curve) {
   s += `<line class="cnow" id="c-now" x1="-50" x2="-50" y1="${CV.y0}" y2="${CV.y0}"/>
     <circle class="cdot" id="c-dot" r="5" cx="-50" cy="-50"/><circle class="cflow" id="c-flow" r="4.5" cx="-50" cy="-50"/>
     <text class="val" id="c-txt" x="676" y="874"></text><text class="t s" id="c-txt2" x="676" y="890"></text>
+    <g id="c-cross" visibility="hidden">
+      <line class="ccross" id="cx-v"/><line class="ccross" id="cx-h"/><circle class="cxdot" id="cx-dot" r="4.5"/>
+      <rect class="cxbox" id="cx-xb" width="34" height="15" rx="3"/><text class="cxtxt" id="cx-xt" text-anchor="middle"></text>
+      <rect class="cxbox" id="cx-yb" width="42" height="15" rx="3"/><text class="cxtxt" id="cx-yt" text-anchor="middle"></text>
+    </g>
   </g>`;
   return s;
 }
@@ -683,6 +695,12 @@ svg.run-vraag .s-vraag{stroke:var(--hot);animation:sig 1s linear infinite} @keyf
 svg.run-fan .fan{animation:spin var(--sp-fan,1.4s) linear infinite} @keyframes spin{to{transform:rotate(360deg)}}
 svg.run-refr .compbody{stroke:var(--refr);stroke-width:2.6}
 .cgrid{stroke:var(--line);stroke-width:1}
+.cgrid2{stroke:var(--line);stroke-width:.6;opacity:.55}
+.ctick{stroke:var(--muted);stroke-width:.9}
+.ccross{stroke:var(--accent);stroke-width:1.2;stroke-dasharray:4 3;pointer-events:none}
+.cxdot{fill:var(--surface);stroke:var(--accent);stroke-width:2.2;pointer-events:none}
+.cxbox{fill:var(--accent);pointer-events:none}
+.cxtxt{fill:var(--surface);font-family:var(--f-mono);font-size:10px;font-weight:500;pointer-events:none}
 .caxis{stroke:var(--muted);stroke-width:1.3}
 .curve{fill:none;stroke:var(--hot);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round}
 .cpt{fill:var(--surface);stroke:var(--hot);stroke-width:1.6}
@@ -1184,6 +1202,20 @@ function mountDashboard(host, root) {
     if (ptrs.size > 1 && d0 > 0) zoomAt(d1 / d0, x1, y1); else applyZoom();
   });
   const up = e => ptrs.delete(e.pointerId);
+  const cross = $("#c-cross"), toSvg = e => { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); };
+  function showCross(e) {
+    const p = toSvg(e);
+    if (p.x < CV.x0 - 2 || p.x > CV.x1 + 2 || p.y < 852 || p.y > CV.y0 + 20) { if (e.type !== "pointermove" || e.pointerType === "mouse") cross.setAttribute("visibility", "hidden"); return; }
+    const t = Math.round(CV.t0 + clamp((p.x - CV.x0) / (CV.x1 - CV.x0), 0, 1) * (CV.t1 - CV.t0));   // hele graden, zoals het display
+    const v = curveAt(CURVE, t), x = cvx(t), y = cvy(v);
+    const set = (id, a) => { const el = $("#" + id); for (const [k, val] of Object.entries(a)) el.setAttribute(k, typeof val === "number" ? val.toFixed(1) : val); };
+    set("cx-v", { x1: x, x2: x, y1: CV.y0, y2: y }); set("cx-h", { x1: CV.x0, x2: x, y1: y, y2: y }); set("cx-dot", { cx: x, cy: y });
+    set("cx-xb", { x: x - 17, y: CV.y0 + 4 }); set("cx-xt", { x, y: CV.y0 + 15 }); $("#cx-xt").textContent = fmt(t, 0) + "°";
+    set("cx-yb", { x: CV.x0 - 46, y: y - 7.5 }); set("cx-yt", { x: CV.x0 - 25, y: y + 3.5 }); $("#cx-yt").textContent = fmt(v, 1) + "°";
+    cross.setAttribute("visibility", "visible");
+  }
+  svg.addEventListener("pointermove", showCross); svg.addEventListener("pointerdown", showCross);
+  svg.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") cross.setAttribute("visibility", "hidden"); });
   svg.addEventListener("pointerup", up); svg.addEventListener("pointercancel", up);
   svg.addEventListener("wheel", e => {
     if (e.ctrlKey) { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY); }
