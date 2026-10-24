@@ -1,0 +1,62 @@
+{
+  "title": "Ecodan Dashboard",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ecodan Dashboard",
+        "description": "Adds a panel to the sidebar with a live installation diagram of the Ecodan heat pump. The MELCloud entities are detected automatically; the entity prefix and manual mapping can be set later via Configure.",
+        "data": {
+          "sidebar_title": "Sidebar title",
+          "sidebar_icon": "Icon",
+          "url_path": "URL path (e.g. ecodan)",
+          "require_admin": "Visible to administrators only",
+          "thema": "Theme"
+        }
+      }
+    },
+    "error": {
+      "invalid_url_path": "Only lowercase letters, digits, - and _"
+    },
+    "abort": {
+      "single_instance_allowed": "Already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ecodan Dashboard",
+        "description": "Changes apply immediately; reload the panel in your browser or app afterwards.",
+        "data": {
+          "sidebar_title": "Sidebar title",
+          "sidebar_icon": "Icon",
+          "url_path": "URL path (e.g. ecodan)",
+          "require_admin": "Visible to administrators only",
+          "thema": "Theme",
+          "prefix": "Entity prefix of the Ecodan device",
+          "klep_aan_is_tapwater": "3-way valve: on = hot water",
+          "overrides": "Manual mapping (overrides)"
+        },
+        "data_description": {
+          "prefix": "The part between the domain and the sensor name, e.g. technische_ruimte_ecodan for sensor.technische_ruimte_ecodan_tanktemperatuur.",
+          "klep_aan_is_tapwater": "Turn this off if the diagram shows heating while the tank is being heated.",
+          "overrides": "E.g. {\"water_heater\": \"water_heater.ecodan\"}. Leave empty for automatic detection. See the README for all keys.",
+          "thema": "Default for everyone. The sun/moon button in the panel overrides it per device."
+        }
+      }
+    },
+    "error": {
+      "invalid_url_path": "Only lowercase letters, digits, - and _",
+      "invalid_prefix": "Only lowercase letters, digits and _",
+      "invalid_overrides": "Must be an object (mapping)"
+    }
+  },
+  "selector": {
+    "thema": {
+      "options": {
+        "light": "Light",
+        "dark": "Dark",
+        "auto": "Follow Home Assistant"
+      }
+    }
+  }
+}
