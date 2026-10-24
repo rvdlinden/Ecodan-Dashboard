@@ -1,0 +1,62 @@
+{
+  "title": "Ecodan Dashboard",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ecodan Dashboard",
+        "description": "Voegt een panel toe aan de zijbalk met een live installatieschema van de Ecodan-warmtepomp. De MELCloud-entiteiten worden automatisch gevonden; het entiteit-voorvoegsel en een handmatige koppeling stel je later in via Configureren.",
+        "data": {
+          "sidebar_title": "Naam in de zijbalk",
+          "sidebar_icon": "Icoon",
+          "url_path": "URL-pad (bijv. ecodan)",
+          "require_admin": "Alleen zichtbaar voor beheerders",
+          "thema": "Thema"
+        }
+      }
+    },
+    "error": {
+      "invalid_url_path": "Alleen kleine letters, cijfers, - en _"
+    },
+    "abort": {
+      "single_instance_allowed": "Het dashboard is al geïnstalleerd."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ecodan Dashboard",
+        "description": "Wijzigingen zijn direct actief; herlaad daarna het panel in je browser of app.",
+        "data": {
+          "sidebar_title": "Naam in de zijbalk",
+          "sidebar_icon": "Icoon",
+          "url_path": "URL-pad (bijv. ecodan)",
+          "require_admin": "Alleen zichtbaar voor beheerders",
+          "thema": "Thema",
+          "prefix": "Entiteit-voorvoegsel van het Ecodan-apparaat",
+          "klep_aan_is_tapwater": "3-wegklep: aan = tapwater",
+          "overrides": "Handmatige koppeling (overrides)"
+        },
+        "data_description": {
+          "prefix": "Het stuk tussen het domein en de sensornaam, bijv. technische_ruimte_ecodan voor sensor.technische_ruimte_ecodan_tanktemperatuur.",
+          "klep_aan_is_tapwater": "Zet dit uit als het schema verwarming toont terwijl het vat wordt opgewarmd.",
+          "overrides": "Bijv. {\"water_heater\": \"water_heater.ecodan\"}. Leeg laten voor automatische detectie. Alle sleutels staan in de README.",
+          "thema": "Standaard voor iedereen. De zon/maan-knop in het panel overschrijft dit per apparaat."
+        }
+      }
+    },
+    "error": {
+      "invalid_url_path": "Alleen kleine letters, cijfers, - en _",
+      "invalid_prefix": "Alleen kleine letters, cijfers en _",
+      "invalid_overrides": "Moet een object (mapping) zijn"
+    }
+  },
+  "selector": {
+    "thema": {
+      "options": {
+        "light": "Licht",
+        "dark": "Donker",
+        "auto": "Volg Home Assistant"
+      }
+    }
+  }
+}
