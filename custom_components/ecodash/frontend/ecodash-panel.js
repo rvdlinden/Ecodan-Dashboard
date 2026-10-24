@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.3.0";
+const ECODASH_VERSION = "1.3.1";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -473,7 +473,6 @@ const G = [
       now: X => X.target == null ? "" : `Modus ${esc(X.whMode || "–")}, doel ${fmt(X.target, 0)} °C.` },
     { k: "tap", n: "Waterverbruik (watermeter)", c: "tank", x: `De watermeter in de meterkast meet al het water in huis, ook voor toilet en koude kranen. Het schema toont alleen stroming door het vat als het vat tegelijk minstens ${fmt(TAP_DROP, 1)} °C afkoelt binnen ${TAP_WIN / 60e3} minuten. Doordat MELCloud de tanktemperatuur met vertraging doorgeeft, start dat pas na een paar minuten; korte tapbeurten (handen wassen) zie je niet.`,
       now: X => !X.tapFlow ? "Er stroomt nu geen water." : X.hotDraw ? `Er wordt warm water getapt: het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld.` : "Er stroomt water, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan." },
-    { k: "imm", n: "Immersion heater", c: "imm", now: X => X.imm ? "Aan! Onverwacht: bij de EHST20D-VM2D zit normaal geen dompelaar." : "Uit. Bij jouw model is er waarschijnlijk geen dompelaar ingebouwd, dus dit blijft altijd uit." },
   ]},
   { title: "Regelaar, energie en verbinding", note: "Waarden die de FTC6 berekent of over zichzelf rapporteert.", items: [
     { k: "dhw_prod", n: "Daily hot water energy produced", c: "ftc", x: "Warmte die vandaag in het tapwatervat is gestopt. Berekend door de FTC6 uit debiet × (aanvoer − retour); een goede schatting, geen geijkte meter.", now: X => X.dailyFresh ? "" : `Deze waarde is sinds ${dagTijd(X.dailySince)} niet veranderd, dus hij hoort bij een eerdere dag. MELCloud werkt de dagtotalen met vertraging bij.` },
@@ -505,6 +504,9 @@ const G = [
     { k: "boiler_flow", n: "Boiler flow temperature", c: "unused", unused: 1, x: "Aanvoervoeler THWB1 van een externe ketel.", now: X => fixed25(X.v) },
     { k: "boiler_ret", n: "Boiler return temperature", c: "unused", unused: 1, x: "Retourvoeler THWB2 van een externe ketel.", now: X => fixed25(X.v) },
     { k: "mixing", n: "Mixing tank temperature", c: "unused", unused: 1, x: "Voeler THW10 in een mengvat (buffervat). Wordt gebruikt als het systeem met een extra zonepomp werkt.", now: X => fixed25(X.v) },
+    { k: "imm", n: "Immersion heater", c: "imm", unused: 1, x: "Uitgang voor een dompelaar (elektrisch element) in het tapwatervat.",
+      now: X => X.imm == null ? "Uitgeschakeld in Home Assistant. Bij de EHST20D-VM2D zit geen dompelaar, dus dat kan zo blijven."
+        : X.imm ? "Aan! Onverwacht: bij de EHST20D-VM2D zit normaal geen dompelaar." : "Uit. Bij jouw model zit geen dompelaar, dus dit blijft altijd uit." },
     { k: "pump2", n: "Water pump 2", c: "unused", unused: 1, x: "Extra pomp voor zone 1 (uitgang OUT2), alleen nodig bij een mengvat of een lange leiding.", now: X => X.pump2 ? "Aan: dan heeft de installateur wél een tweede pomp geplaatst." : "Uit." },
   ]},
   { title: "Uitgeschakeld in Home Assistant", note: "Deze entiteiten staan bij jou terecht uit. De regelaar kan ze aansturen, maar jouw installatie heeft de onderdelen niet.", items: [
@@ -834,7 +836,7 @@ function mountDashboard(host, root) {
   function valueHtml(e, X) {
     if (e.dis) return `<span class="pill unused">uitgeschakeld</span>`;
     const id = R[e.k], s = S(id);
-    if (!id) return `<span class="pill missing">niet gevonden</span>`;
+    if (!id) return e.unused ? `<span class="pill unused">uitgeschakeld</span>` : `<span class="pill missing">niet gevonden</span>`;
     if (!ok(s)) return `<span class="pill missing">${s ? s.state : "ontbreekt"}</span>`;
     if (id.startsWith("binary_sensor.")) return `<span class="pill${s.state === "on" ? " on" : ""}${e.unused ? " unused" : ""}">${s.state === "on" ? "aan" : "uit"}</span>`;
     if (id.startsWith("water_heater.")) return `${esc(X.whMode || s.state)} · doel ${fmt(X.target, 0)} <span class="unit">°C</span>`;
@@ -957,7 +959,7 @@ function mountDashboard(host, root) {
     // entiteitenlijst
     groups.forEach(g => g.items.forEach(e => {
       const v = root.querySelector(`[data-v="${e.k}"]`); if (v) v.innerHTML = valueHtml(e, X);
-      const i = root.querySelector(`[data-id="${e.k}"]`); if (i) i.textContent = e.dis ? "entiteit uitgeschakeld in Home Assistant" : (R[e.k] || `niet gevonden · override-sleutel "${e.k}"`);
+      const i = root.querySelector(`[data-id="${e.k}"]`); if (i) i.textContent = e.dis || (e.unused && !R[e.k]) ? "entiteit uitgeschakeld in Home Assistant" : (R[e.k] || `niet gevonden · override-sleutel "${e.k}"`);
     }));
 
     renderBanners(X);
@@ -1031,14 +1033,14 @@ function mountDashboard(host, root) {
     $$("ul.ents button").forEach(b => b.classList.toggle("on", byKey[b.dataset.e].c === c && (!key || b.dataset.e === key)));
     const e = key ? byKey[key] : null, X = st.X || {};
     const list = Object.values(byKey).filter(x => x.c === c);
-    let h = `<div class="kicker">${e ? (e.dis ? "uitgeschakeld in Home Assistant" : esc(R[e.k] || "niet gevonden")) : esc(d.where)}</div><h2>${e ? e.n : d.name}</h2>`;
+    let h = `<div class="kicker">${e ? (e.dis || (e.unused && !R[e.k]) ? "uitgeschakeld in Home Assistant" : esc(R[e.k] || "niet gevonden")) : esc(d.where)}</div><h2>${e ? e.n : d.name}</h2>`;
     if (e) {
       h += `<p class="muted">Onderdeel: <b style="color:var(--ink)">${d.name}</b> · ${d.where}</p>`;
       h += `<p>${e.x || d.text}</p>`;
       if (e.x) h += `<p class="muted">${d.text}</p>`;
       const nowTxt = e.now ? e.now({ ...X, v: X[e.k] }) : "";
       h += `<div class="now">Nu: <b>${valueHtml(e, X)}</b>${nowTxt ? "<br>" + nowTxt : ""}</div>`;
-      if (!e.dis && !R[e.k]) h += `<p class="muted">Niet gevonden. Koppel hem met de hand via Configureren → overrides, bijv. <code>{"${e.k}": "${ENT[e.k]?.d || "sensor"}.…"}</code>.</p>`;
+      if (!e.dis && !e.unused && !R[e.k]) h += `<p class="muted">Niet gevonden. Koppel hem met de hand via Configureren → overrides, bijv. <code>{"${e.k}": "${ENT[e.k]?.d || "sensor"}.…"}</code>.</p>`;
       if (R[e.k] && S(R[e.k])) h += `<button class="hist" data-more="${esc(R[e.k])}">Geschiedenis en details</button>`;
     } else h += `<p>${d.text}</p>`;
     const others = list.filter(x => !e || x.k !== e.k);
