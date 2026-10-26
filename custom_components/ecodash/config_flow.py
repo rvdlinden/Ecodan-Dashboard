@@ -40,6 +40,7 @@ from .const import (
     CONF_VALVE_DHW,
     DEFAULTS,
     DOMAIN,
+    ROOM_SETPOINTS,
 )
 
 URL_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
@@ -47,6 +48,7 @@ PREFIX_RE = re.compile(r"^[a-z0-9_]*$")
 # Bereiken zoals op het Ecodan-display: buitentemperatuur −30…+35 °C, aanvoer 20…60 °C, verschuiving ±5 °C.
 OUTDOOR = NumberSelector(NumberSelectorConfig(min=-30, max=35, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"))
 FLOW = NumberSelector(NumberSelectorConfig(min=20, max=60, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"))
+SETPOINT = NumberSelector(NumberSelectorConfig(min=5, max=30, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"))
 SHIFT = NumberSelector(NumberSelectorConfig(min=-5, max=5, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"))
 
 
@@ -66,6 +68,7 @@ def _data_schema(d: dict[str, Any]) -> dict:
     return {
         vol.Required(CONF_PREFIX, default=d[CONF_PREFIX]): TextSelector(),
         vol.Required(CONF_VALVE_DHW, default=d[CONF_VALVE_DHW]): BooleanSelector(),
+        **{vol.Required(key, default=d[key]): SETPOINT for key, _ in ROOM_SETPOINTS},
         vol.Required(CONF_CURVE_OUT_COLD, default=d[CONF_CURVE_OUT_COLD]): OUTDOOR,
         vol.Required(CONF_CURVE_FLOW_COLD, default=d[CONF_CURVE_FLOW_COLD]): FLOW,
         vol.Required(CONF_CURVE_OUT_WARM, default=d[CONF_CURVE_OUT_WARM]): OUTDOOR,

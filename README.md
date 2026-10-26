@@ -134,6 +134,7 @@ Via **Ecodan Dashboard → Configureren** stel je het volgende in:
 | Thema | `Licht`, `Donker` of `Volg Home Assistant`. De zon/maan-knop in het panel overschrijft dit per apparaat |
 | Entiteit-voorvoegsel | Standaard `technische_ruimte_ecodan`, dus bijv. `sensor.technische_ruimte_ecodan_tanktemperatuur` |
 | 3-wegklep: aan = tapwater | Zet uit als het schema verwarming toont terwijl het vat wordt opgewarmd |
+| Thermostaat Woonkamer, Slaapkamer 1 t/m 4 | Ingestelde temperatuur op het Möhlenhoff-display in die kamer (standaard 20 °C) |
 | Stooklijn | Koude punt, warme punt, optioneel aanpassingspunt en verschuiving, zoals op het Ecodan-display (zie *Stooklijn*) |
 | Overrides | Koppel entiteiten handmatig als de detectie iets mist |
 
@@ -184,6 +185,13 @@ Standaard staan deze kamers met hun temperatuurmeter in het schema:
 | 1e verdieping | Slaapkamer 2 | `sensor.kinderkamer_thermo_hygro_temperature` |
 | 1e verdieping | Slaapkamer 3 | `sensor.hobbykamer_thermo_hygro_temperature` |
 | Begane grond | Woonkamer | `sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur` |
+
+De thermostaten (Möhlenhoff) zijn niet uit te lezen. Hun ingestelde temperatuur vul je per kamer in
+onder **Configureren**. In het schema staat die waarde in het display-icoon en de gemeten temperatuur
+ernaast. In de lijst *Kamertemperaturen* en in *Wat gebeurt er nu?* zie je beide, met een indicatie:
+meer dan 0,3 °C onder de ingestelde waarde betekent waarschijnlijk warmtevraag, meer dan 0,5 °C erboven
+betekent waarschijnlijk dichte kranen. Met de override `verdiepingen` kan een kamer ook een eigen
+`instelling` krijgen, bijv. `{naam: Woonkamer, entity: sensor.x, instelling: 21}`.
 
 Bestaat zo'n sensor niet, dan zoekt het panel een climate-entiteit op kamernaam
 (`climate.woonkamer` of een climate-entiteit met de naam *Woonkamer*). Een andere indeling stel je

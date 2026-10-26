@@ -35,6 +35,11 @@
           "prefix": "Entity prefix of the Ecodan device",
           "klep_aan_is_tapwater": "3-way valve: on = hot water",
           "overrides": "Manual mapping (overrides)",
+          "instelling_woonkamer": "Thermostat Living room (Woonkamer): set temperature",
+          "instelling_slaapkamer_1": "Thermostat Bedroom 1 (Slaapkamer 1): set temperature",
+          "instelling_slaapkamer_2": "Thermostat Bedroom 2 (Slaapkamer 2): set temperature",
+          "instelling_slaapkamer_3": "Thermostat Bedroom 3 (Slaapkamer 3): set temperature",
+          "instelling_slaapkamer_4": "Thermostat Bedroom 4 (Slaapkamer 4): set temperature",
           "stooklijn_buiten_koud": "Heating curve: outdoor temperature of the cold point",
           "stooklijn_aanvoer_koud": "Heating curve: flow temperature at the cold point",
           "stooklijn_buiten_warm": "Heating curve: outdoor temperature of the warm point",
@@ -52,7 +57,8 @@
           "stooklijn_buiten_koud": "Copy these from the Ecodan display (Heating → Compensation curve). The panel cannot read them from MELCloud. At this outdoor temperature and colder, the flow temperature is the value below.",
           "stooklijn_buiten_warm": "At this outdoor temperature and warmer, the flow temperature is the value below. Must be warmer than the cold point.",
           "stooklijn_middenpunt": "Only if an adjustment point is set on the display; it must lie between the cold and the warm point.",
-          "stooklijn_verschuiving": "Shift of the whole curve, as set on the display (−5 to +5 °C). Usually 0."
+          "stooklijn_verschuiving": "Shift of the whole curve, as set on the display (−5 to +5 °C). Usually 0.",
+          "instelling_woonkamer": "Copy the value from the Möhlenhoff display in that room; the panel cannot read it. The diagram shows it in the display icon, next to the measured temperature."
         }
       }
     },

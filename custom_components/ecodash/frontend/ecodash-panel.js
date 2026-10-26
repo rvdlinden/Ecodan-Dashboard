@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.5.0";
+const ECODASH_VERSION = "1.6.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -130,6 +130,7 @@ function resolveEntities(hass, cfg) {
   // verdiepingen en kamers; thermostaten worden gezocht op kamernaam (climate.woonkamer of naam "Woonkamer")
   const floors = Array.isArray(ov.verdiepingen) && ov.verdiepingen.length ? ov.verdiepingen : DEFAULT_FLOORS;
   const climates = ids.filter(id => id.startsWith("climate.") && !id.includes("ecodan"));
+  const setp = Object.fromEntries(Object.entries(cfg.instellingen || {}).map(([n, v]) => [slug(n), +v]));
   r.floors = floors.slice(0, 3).map(f => ({
     naam: String(f.naam || f.name || "").toUpperCase(),
     kamers: (f.kamers || f.rooms || []).slice(0, 4).map(k => {
@@ -141,7 +142,9 @@ function resolveEntities(hass, cfg) {
         ent = climates.find(id => id === "climate." + sl)
           || climates.find(id => slug(S[id].attributes.friendly_name || "") === sl) || given;
       }
-      return { naam, ent };
+      const own = typeof k === "object" && k ? parseFloat(k.instelling) : NaN;
+      const sp = isFinite(own) ? own : setp[slug(naam)];
+      return { naam, ent, sp: isFinite(sp) ? sp : null };
     }),
   }));
   r.floors.forEach((f, fi) => f.kamers.forEach((k, j) => { r[`room_${fi}_${j}`] = k.ent; }));
@@ -228,20 +231,20 @@ function floorsSvg(floors) {
     s += `</g>`;
     s += `<g class="comp" data-c="tstat" tabindex="0" role="button" aria-label="Thermostaten ${esc(f.naam.toLowerCase())}">`;
     s += `<path class="sig" d="M1074,${T + 44} H1064 V${T + 32} H890 V${T + 44}"/>`;
-    s += `<path class="sig s-vraag" d="M1172,${T + 49} H1180"/>`;
+    s += `<path class="sig s-vraag" d="M1172,${T + 49} H1182"/>`;
     s += `<rect class="shape regel" data-floor="${fi}" x="1074" y="${T + 36}" width="98" height="26" rx="4"/>`;
     s += `<text class="t s" x="1123" y="${T + 53}" text-anchor="middle">regelunit</text>`;
     const n = Math.max(1, f.kamers.length), last = T + 84 + (n - 1) * 30;
     s += `<path class="sig" d="M1078,${T + 62} V${last}"/>`;
     f.kamers.forEach((r, j) => {
       const y = T + 84 + j * 30;
-      s += `<path class="sig" d="M1078,${y} H1084"/>`;
-      s += `<rect class="shape" x="1084" y="${y - 10}" width="18" height="20" rx="3"/>`;
-      s += `<circle class="tdot" id="room-${fi}-${j}-dot" cx="1093" cy="${y}" r="4"/>`;
+      s += `<path class="sig" d="M1078,${y} H1082"/>`;
+      s += `<rect class="shape tbox" id="room-${fi}-${j}-dot" x="1082" y="${y - 12}" width="31" height="24" rx="4"/>`;
+      s += `<text class="tsp" x="1097.5" y="${y + 4}" text-anchor="middle">${r.sp == null ? "–" : fmt(r.sp, 1) + "°"}</text>`;
       if (r.ent) {
-        s += `<text class="t s room" x="1108" y="${y - 1}">${esc(r.naam)}</text>`;
-        s += `<text class="val sm" id="room-${fi}-${j}" x="1108" y="${y + 11}"></text>`;
-      } else s += `<text class="t s room" x="1108" y="${y + 4}">${esc(r.naam)}</text>`;
+        s += `<text class="t s room" x="1116" y="${y - 1}">${esc(r.naam)}</text>`;
+        s += `<text class="val sm" id="room-${fi}-${j}" x="1116" y="${y + 11}"></text>`;
+      } else s += `<text class="t s room" x="1116" y="${y + 4}">${esc(r.naam)}</text>`;
     });
     s += `</g>`;
   });
@@ -291,7 +294,7 @@ function schemaSvg(floors, curve) {
   <text class="val sm" id="v-tap" x="356" y="754"></text>
   <text class="val sm" id="v-tap2" x="356" y="767"></text>
 
-  <path class="sig s-vraag" d="M1180,579 V56 H750 V125 H740"/>
+  <path class="sig s-vraag" d="M1182,579 V56 H750 V125 H740"/>
   <text class="t s" x="1170" y="50" text-anchor="end">warmtevraag aan/uit → FTC6</text>
 
   <g class="comp" data-c="outdoor" data-also="meterOut" tabindex="0" role="button" aria-label="Buitenunit SUZ-SWM60 VA">
@@ -486,7 +489,7 @@ const C = {
   cyl: { name: "Cilinderunit EHST20D-VM2D", where: "Technische ruimte", text: "Alles-in-één binnenunit: platenwisselaar, pomp, 3-wegklep, 2 kW booster heater, expansievat, regelaar en een 200 L tapwatervat in één kast. 'VM2' = 1-fase, 2 kW booster heater. De H in EHST staat voor alleen verwarmen: deze unit kan niet koelen." },
   manifold: { name: "Vloerverwarmingsverdelers", where: "Eén per verdieping", text: "Verdelen het warme water over 4–5 lussen per verdieping. Elke lus is een slang die door één kamer (of een deel ervan) in de dekvloer loopt en afgekoeld terugkomt." },
   act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' bovenop de verdeler die een lus open of dicht zetten. Ze worden aangestuurd door de thermostaat van de kamer. Niet zichtbaar in MELCloud." },
-  tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat opent de kranen van zijn eigen kamer. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt is daardoor niet te zien. Het panel leidt de warmtevraag af uit de warmtepomp: draait die op ruimteverwarming, dan vraagt minstens één thermostaat warmte en kleurt het signaal naar de FTC6 rood." },
+  tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat (Möhlenhoff) opent de kranen van zijn eigen kamer. In het display-icoon staat de ingestelde temperatuur uit Configureren, ernaast de gemeten temperatuur. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt is daardoor niet te zien. Het panel leidt de warmtevraag af uit de warmtepomp: draait die op ruimteverwarming, dan vraagt minstens één thermostaat warmte en kleurt het signaal naar de FTC6 rood." },
   unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een hybride cv-ketel, een mengvat met extra zonepomp en meer. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat MELCloud ze altijd meestuurt. Voelers zonder sensor geven een vaste 25,0 °C." },
   curve: { name: "Stooklijn (compensatiecurve)", where: "Instelling in de FTC6", text: "Met Operation mode Curve bepaalt de FTC6 de aanvoertemperatuur uit de buitentemperatuur (TH7): hoe kouder buiten, hoe warmer het water naar de vloeren. Tot en met het koude punt geldt de hoogste aanvoer, vanaf het warme punt de laagste, en daartussen loopt de lijn recht (via het aanpassingspunt als dat is ingesteld). De groene stip is de huidige buitentemperatuur op de lijn: de aanvoer waar de FTC6 nu op mikt. De rode stip is de werkelijke aanvoer (THW1) zodra de vloerverwarming draait. De punten komen niet uit MELCloud maar uit Configureren; pas ze daar aan als je de stooklijn op het Ecodan-display verandert." },
   zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. In Home Assistant maakt MELCloud daar een apart apparaat voor ('Ecodan Huis'). Het apparaat 'Ecodan' is de unit zelf met het tapwater." },
@@ -695,8 +698,10 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .fill-ink{fill:var(--ink)} .fill-muted{fill:var(--muted)}
 .wifi{stroke:var(--ink)}
 .coilheat{stroke:var(--off)}
-.tdot{fill:none;stroke:var(--accent);stroke-width:1.6}
-.tdot.heat{fill:var(--hot);stroke:var(--hot)}
+.tbox{stroke-width:1.4}
+.tbox.heat{stroke:var(--hot);stroke-width:2}
+.t.room{font-size:10px}
+.tsp{fill:var(--ink);font-family:var(--f-body);font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;pointer-events:none}
 .regel.heat{stroke:var(--hot);stroke-width:2.2}
 #tankfill{fill:var(--dhw);opacity:.08;transition:opacity .6s}
 /* stroom-overlay: bolletjes die in de tekenrichting van het pad lopen */
@@ -858,12 +863,18 @@ function mountDashboard(host, root) {
   const watt = id => { const v = num(id); if (v == null) return null; const u = S(id).attributes.unit_of_measurement; return u === "kW" ? v * 1000 : v; };
   const kwh = id => { const v = num(id); if (v == null) return null; const u = S(id).attributes.unit_of_measurement; return u === "Wh" ? v / 1000 : u === "MWh" ? v * 1000 : v; };
 
+  // gemeten tegen ingesteld: een indicatie, de thermostaat zelf is niet uit te lezen
+  const vsSet = (t, sp) => { const d = t - sp;
+    return d < -0.3 ? `${fmt(-d, 1)} °C onder de ingestelde waarde: deze kamer vraagt waarschijnlijk warmte.`
+      : d > 0.5 ? `${fmt(d, 1)} °C boven de ingestelde waarde: de kranen van deze kamer staan waarschijnlijk dicht.`
+      : "Rond de ingestelde waarde."; };
+
   /* entiteitenlijst */
   const byKey = {};
   const rooms = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => ({ k: `room_${fi}_${j}`, n: r.naam, c: "tstat",
-    x: "Temperatuur van de slimme meter naast de kamerthermostaat. De thermostaat zelf is niet slim en niet zichtbaar in Home Assistant.",
-    now: X => { const v = X.rooms[fi]?.[j]; return v?.t == null ? "" : `${f.naam.charAt(0) + f.naam.slice(1).toLowerCase()}: ${fmt(v.t, 1)} °C.`; } })));
-  const groups = rooms.length ? [...G.slice(0, 5), { title: "Kamertemperaturen", note: "Slimme temperatuurmeters naast de kamerthermostaten.", items: rooms }, ...G.slice(5)] : G;
+    x: "Temperatuur van de slimme meter naast de kamerthermostaat (Möhlenhoff). De thermostaat zelf is niet slim en niet zichtbaar in Home Assistant; de ingestelde temperatuur komt uit Configureren en staat in het display-icoon in het schema.",
+    now: X => { const v = X.rooms[fi]?.[j]; return v?.t == null ? "" : `${f.naam.charAt(0) + f.naam.slice(1).toLowerCase()}: gemeten ${fmt(v.t, 1)} °C` + (r.sp == null ? "." : `, ingesteld ${fmt(r.sp, 1)} °C. ` + vsSet(v.t, r.sp)); } })));
+  const groups = rooms.length ? [...G.slice(0, 5), { title: "Kamertemperaturen", note: "Gemeten door de slimme meters naast de kamerthermostaten; de ingestelde waarde staat in het schema in het display-icoon.", items: rooms }, ...G.slice(5)] : G;
   $("#groups").innerHTML = groups.map(g => `<div class="group"><h3>${g.title}</h3><p class="gnote">${g.note}</p><ul class="ents">` +
     g.items.map(e => { byKey[e.k] = e;
       return `<li><button type="button" data-e="${e.k}"><span class="ename">${e.n}</span><span class="evalue" data-v="${e.k}"></span><span class="eid" data-id="${e.k}"></span></button></li>`; }).join("") +
@@ -1111,8 +1122,8 @@ function mountDashboard(host, root) {
     if (X.pump1 && !X.freq) li.push(`Pomp 1 draait zonder compressor: nadraaien na een run, of ontdooien.`);
     if (X.vraagSrc !== "afgeleid")
       li.push(X.vraag ? `<b>Er is warmtevraag</b> vanuit ${X.vraagSrc === "signaal" ? "het warmtevraagsignaal" : "minstens één thermostaat"}.` : `Geen van de thermostaten vraagt nu warmte.`);
-    const kamers = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => [r.naam, X.rooms[fi]?.[j]?.t])).filter(([, t]) => t != null);
-    if (kamers.length) li.push(`<b>Kamers:</b> ${kamers.map(([n, t]) => `${esc(n)} ${fmt(t, 1)} °C`).join(" · ")}.`);
+    const kamers = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => [r.naam, X.rooms[fi]?.[j]?.t, r.sp])).filter(([, t]) => t != null);
+    if (kamers.length) li.push(`<b>Kamers (gemeten / ingesteld):</b> ${kamers.map(([n, t, sp]) => `${esc(n)} ${fmt(t, 1)}${sp == null ? "" : " / " + fmt(sp, 1)} °C`).join(" · ")}.`);
     if (X.hotDraw) li.push(`<b>Er wordt warm water getapt.</b> De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))} en het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld: er stroomt koud leidingwater het vat in.`);
     else if (X.tapFlow > 0) li.push(`De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))}, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan, dus niet via de Ecodan.`);
     if (X.tank != null && X.target != null && X.mode !== "tapwater" && X.mode !== "legionella") {

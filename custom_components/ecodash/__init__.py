@@ -35,6 +35,7 @@ from .const import (
     CONF_VALVE_DHW,
     DEFAULTS,
     DOMAIN,
+    ROOM_SETPOINTS,
     STATIC_URL,
     WEBCOMPONENT,
 )
@@ -77,6 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if _opt(entry, CONF_CURVE_MID) else None,
             "verschuiving": float(_opt(entry, CONF_CURVE_SHIFT)),
         },
+        "instellingen": {room: float(_opt(entry, key)) for key, room in ROOM_SETPOINTS},
     }
     url_path = _opt(entry, CONF_URL_PATH)
 
