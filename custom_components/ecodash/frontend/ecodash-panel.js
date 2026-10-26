@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.6.1";
+const ECODASH_VERSION = "1.7.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -592,7 +592,7 @@ const STYLE = `
 :host{
   --bg:#eef1ef; --surface:#fafbfa; --ink:#1b2422; --muted:#5b6865; --line:#c3ccc8; --zone:#e3e8e5;
   --hot:#c9412c; --ret:#2c64c4; --refr:#7a4bbf; --dhw:#d9820f; --cold:#2a9bb5; --sig:#6c7a76;
-  --accent:#0d7a64; --accent-soft:#d3ebe4; --off:#8a9692; --elec:#a87a00; --warn:#b26a00; --warn-soft:#fbeed6;
+  --accent:#2b2f2e; --accent-soft:#dfe4e2; --off:#8a9692; --glow:rgba(0,0,0,.28); --elec:#a87a00; --warn:#b26a00; --warn-soft:#fbeed6;
   --bad:#b3261e; --bad-soft:#f9dedc; --dot:#ffffffee;
   --plate:#ffffff; --plate-edge:#9aa6a2; --lcd:#b9c4b5; --lcd-edge:#8d9a8b;
   --f-display:"Barlow Semi Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
@@ -601,30 +601,12 @@ const STYLE = `
   display:block;height:100%;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;
   -webkit-font-smoothing:antialiased}
 :host(.dark){
-  /* donker thema in de stijl van het Home Assistant-dashboard: bijna zwart, neutrale tegels, lime accent */
-  --bg:#0c0c0c; --surface:#131313; --ink:#e8e8e8; --muted:#9a9da2; --line:#2a2a2a; --zone:#1a1a1a;
-  --hot:#ff6b57; --ret:#5d9bff; --refr:#b48cff; --dhw:#ffab40; --cold:#4fd2e6; --sig:#7a7a7a;
-  --accent:#aedf2a; --accent-soft:#232d0c; --off:#6b6b6b; --elec:#f2c53d; --warn:#f0b04a; --warn-soft:#2a2213;
-  --bad:#ff6b5e; --bad-soft:#2c1513; --dot:#ffffffd9; --bar:#161616; --ctl:#2a2a2a;
-  --plate:#2c2c2c; --plate-edge:#8a8a8a; --lcd:#aebaa9; --lcd-edge:#6f7b6c;
-  --f-display:Roboto,"Noto Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --f-body:Roboto,"Noto Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --f-mono:Roboto,"Noto Sans",system-ui,sans-serif; color-scheme:dark}
-/* tegels: geen rand, ronde hoeken en een dun lime lijntje bovenaan dat naar rechts vervaagt */
-:host(.dark) .kpi, :host(.dark) .board, :host(.dark) aside.detail, :host(.dark) section.flow > div, :host(.dark) .now-box{
-  border:0;border-radius:12px;
-  background:linear-gradient(90deg,var(--accent),transparent 35%) top left/100% 1.5px no-repeat,var(--surface)}
-:host(.dark) .kpi:hover{box-shadow:0 0 0 1px var(--line)}
-:host(.dark) .kpi .k{font-size:14px}
-:host(.dark) .kpi .v{font-size:30px;font-weight:400;letter-spacing:-.01em;line-height:1.2}
-:host(.dark) .kpi .v small{font-size:15px}
-:host(.dark) .bar{background:var(--bar);border-bottom:0}
-:host(.dark) .bar h1{font-weight:500}
-:host(.dark) .zb{background:var(--ctl);border:0;border-radius:12px;box-shadow:none}
-:host(.dark) .zoombar{border-top-color:var(--line)}
-:host(.dark) .board-foot{border-top-color:var(--line)}
-:host(.dark) .chip{border-color:#353535}
-:host(.dark) .banner{border-radius:12px}
+  /* donker thema: dezelfde matte opbouw als het lichte thema, in neutrale donkere tinten; accent lichtgrijs */
+  --bg:#121212; --surface:#1c1c1c; --ink:#e6e6e6; --muted:#9e9e9e; --line:#333333; --zone:#242424;
+  --hot:#ee6a52; --ret:#5d93ee; --refr:#a985e6; --dhw:#f0a33d; --cold:#4cc0d8; --sig:#8a8a8a;
+  --accent:#e0e0e0; --accent-soft:#2f2f2f; --off:#6e6e6e; --elec:#e2b84a; --warn:#f0b04a; --warn-soft:#2e2615;
+  --bad:#ff8a80; --bad-soft:#331b19; --dot:#ffffffd9; --glow:rgba(255,255,255,.22);
+  --plate:#2c2c2c; --plate-edge:#8a8a8a; --lcd:#aebaa9; --lcd-edge:#6f7b6c; color-scheme:dark}
 *{box-sizing:border-box}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 #root{height:100%;overflow:auto}
@@ -751,8 +733,8 @@ svg.imm-on #imm-shape{stroke:var(--hot);stroke-dasharray:none}
 .comp .hit{fill:transparent;stroke:none}
 svg.focus .comp:not(.on){opacity:.35}
 svg.focus .pipe,svg.focus .sig{opacity:.55}
-.comp.on .shape,.comp.on .ghost{stroke:var(--accent);stroke-width:2.6}
-.comp.on{filter:drop-shadow(0 0 5px var(--accent))}
+.comp.on .shape,.comp.on .ghost{stroke:var(--accent);stroke-width:2.2}
+.comp.on{filter:drop-shadow(0 0 2.5px var(--glow))}
 .comp:focus-visible .hit{stroke:var(--accent);stroke-width:2;stroke-dasharray:3 3}
 /* onder het schema */
 .grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:28px;align-items:start}
@@ -1283,11 +1265,22 @@ function mountDashboard(host, root) {
   const ro = new ResizeObserver(() => applyZoom()); ro.observe(vp);
   requestAnimationFrame(applyZoom);
 
-  /* thema: de knop onthoudt de keuze per apparaat; anders geldt de optie uit Configureren */
-  const storedTheme = () => { try { return localStorage.getItem("ecodash-theme"); } catch (e) { return null; } };
+  /* thema: volgt de optie uit Configureren (standaard: licht/donker van Home Assistant). De zon/maan-knop wisselt
+     per apparaat, tot Home Assistant zelf van licht naar donker gaat of andersom; daarna volgt het panel HA weer. */
+  const haDark = () => !!host._hass?.themes?.darkMode;
+  const storedTheme = () => {
+    try {
+      const v = JSON.parse(localStorage.getItem("ecodash-theme") || "null");
+      if (!v || typeof v !== "object") { localStorage.removeItem("ecodash-theme"); return null; }   // oude, blijvende keuze
+      if (v.haDark !== haDark()) { localStorage.removeItem("ecodash-theme"); return null; }          // HA is gewisseld: volg HA
+      return v.thema;
+    } catch (e) { return null; }
+  };
   const applyTheme = () => { const t = storedTheme() || cfg.thema;
     host.classList.toggle("dark", t === "dark" || (t === "auto" && !!host._hass?.themes?.darkMode)); };
-  $("#theme").onclick = () => { try { localStorage.setItem("ecodash-theme", host.classList.contains("dark") ? "light" : "dark"); } catch (e) {} applyTheme(); };
+  $("#theme").onclick = () => {
+    try { localStorage.setItem("ecodash-theme", JSON.stringify({ thema: host.classList.contains("dark") ? "light" : "dark", haDark: haDark() })); } catch (e) {}
+    applyTheme(); };
   applyTheme();
 
   /* verbruik van vandaag: tellerstand om middernacht uit de historie, of anders vermogensstatistiek integreren */
