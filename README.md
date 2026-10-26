@@ -57,7 +57,9 @@ kWh-meters in de meterkast die je al in HA hebt.
   waarden stuurt.
 - **Alleen lezen:** het panel bedient niets. Operation mode en tapwater wijzig je dus niet
   per ongeluk vanaf het dashboard.
-- **Licht en donker thema.** Beide thema's hebben dezelfde matte opbouw, lettertypes en maten; het
+- **Licht en donker thema.** Beide thema's hebben dezelfde matte opbouw, lettertypes en maten. Het
+  schema heeft diepte: zwevende panelen met schaduw, onderdelen met reliëf, leidingen als buizen, het
+  tapwatervat als cilinder en de voelers als bolletjes; het
   accent is donkergrijs (licht) of lichtgrijs (donker). Het thema volgt licht/donker van Home Assistant.
   De zon/maan-knop wisselt per apparaat, tot Home Assistant zelf van licht naar donker gaat of andersom;
   daarna volgt het panel Home Assistant weer. Werkt in de browser en in de HA Companion-app en gebruikt je ingelogde sessie, dus
