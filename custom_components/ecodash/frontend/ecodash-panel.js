@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.6.0";
+const ECODASH_VERSION = "1.6.1";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -239,8 +239,11 @@ function floorsSvg(floors) {
     f.kamers.forEach((r, j) => {
       const y = T + 84 + j * 30;
       s += `<path class="sig" d="M1078,${y} H1082"/>`;
-      s += `<rect class="shape tbox" id="room-${fi}-${j}-dot" x="1082" y="${y - 12}" width="31" height="24" rx="4"/>`;
-      s += `<text class="tsp" x="1097.5" y="${y + 4}" text-anchor="middle">${r.sp == null ? "–" : fmt(r.sp, 1) + "°"}</text>`;
+      // Möhlenhoff-display: vierkant plaatje, LCD-schermpje met de ingestelde waarde en een ronde draaiknop
+      s += `<rect class="tplate" id="room-${fi}-${j}-dot" x="1083" y="${y - 14}" width="28" height="28" rx="3"/>`;
+      s += `<rect class="tlcd" x="1085" y="${y - 11.5}" width="24" height="12.5" rx="1"/>`;
+      s += `<text class="tsp" x="1097" y="${y - 2}" text-anchor="middle">${r.sp == null ? "–" : fmt(r.sp, 1) + "°"}</text>`;
+      s += `<circle class="tknob" cx="1097" cy="${y + 7.5}" r="3.6"/>`;
       if (r.ent) {
         s += `<text class="t s room" x="1116" y="${y - 1}">${esc(r.naam)}</text>`;
         s += `<text class="val sm" id="room-${fi}-${j}" x="1116" y="${y + 11}"></text>`;
@@ -591,6 +594,7 @@ const STYLE = `
   --hot:#c9412c; --ret:#2c64c4; --refr:#7a4bbf; --dhw:#d9820f; --cold:#2a9bb5; --sig:#6c7a76;
   --accent:#0d7a64; --accent-soft:#d3ebe4; --off:#8a9692; --elec:#a87a00; --warn:#b26a00; --warn-soft:#fbeed6;
   --bad:#b3261e; --bad-soft:#f9dedc; --dot:#ffffffee;
+  --plate:#ffffff; --plate-edge:#9aa6a2; --lcd:#b9c4b5; --lcd-edge:#8d9a8b;
   --f-display:"Barlow Semi Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
   --f-body:"IBM Plex Sans",Roboto,system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
@@ -602,6 +606,7 @@ const STYLE = `
   --hot:#ff6b57; --ret:#5d9bff; --refr:#b48cff; --dhw:#ffab40; --cold:#4fd2e6; --sig:#7a7a7a;
   --accent:#aedf2a; --accent-soft:#232d0c; --off:#6b6b6b; --elec:#f2c53d; --warn:#f0b04a; --warn-soft:#2a2213;
   --bad:#ff6b5e; --bad-soft:#2c1513; --dot:#ffffffd9; --bar:#161616; --ctl:#2a2a2a;
+  --plate:#2c2c2c; --plate-edge:#8a8a8a; --lcd:#aebaa9; --lcd-edge:#6f7b6c;
   --f-display:Roboto,"Noto Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-body:Roboto,"Noto Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:Roboto,"Noto Sans",system-ui,sans-serif; color-scheme:dark}
@@ -698,10 +703,12 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .fill-ink{fill:var(--ink)} .fill-muted{fill:var(--muted)}
 .wifi{stroke:var(--ink)}
 .coilheat{stroke:var(--off)}
-.tbox{stroke-width:1.4}
-.tbox.heat{stroke:var(--hot);stroke-width:2}
+.tplate{fill:var(--plate);stroke:var(--plate-edge);stroke-width:1.2}
+.tplate.heat{stroke:var(--hot);stroke-width:2}
+.tlcd{fill:var(--lcd);stroke:var(--lcd-edge);stroke-width:.6}
+.tknob{fill:var(--plate);stroke:var(--plate-edge);stroke-width:1.1}
 .t.room{font-size:10px}
-.tsp{fill:var(--ink);font-family:var(--f-body);font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;pointer-events:none}
+.tsp{fill:#1e2a20;font-family:var(--f-body);font-size:8.2px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;pointer-events:none}
 .regel.heat{stroke:var(--hot);stroke-width:2.2}
 #tankfill{fill:var(--dhw);opacity:.08;transition:opacity .6s}
 /* stroom-overlay: bolletjes die in de tekenrichting van het pad lopen */
