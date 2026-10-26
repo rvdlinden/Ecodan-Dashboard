@@ -35,6 +35,11 @@
           "prefix": "Entiteit-voorvoegsel van het Ecodan-apparaat",
           "klep_aan_is_tapwater": "3-wegklep: aan = tapwater",
           "overrides": "Handmatige koppeling (overrides)",
+          "instelling_woonkamer": "Thermostaat Woonkamer: ingestelde temperatuur",
+          "instelling_slaapkamer_1": "Thermostaat Slaapkamer 1: ingestelde temperatuur",
+          "instelling_slaapkamer_2": "Thermostaat Slaapkamer 2: ingestelde temperatuur",
+          "instelling_slaapkamer_3": "Thermostaat Slaapkamer 3: ingestelde temperatuur",
+          "instelling_slaapkamer_4": "Thermostaat Slaapkamer 4: ingestelde temperatuur",
           "stooklijn_buiten_koud": "Stooklijn: buitentemperatuur koude punt",
           "stooklijn_aanvoer_koud": "Stooklijn: aanvoertemperatuur koude punt",
           "stooklijn_buiten_warm": "Stooklijn: buitentemperatuur warme punt",
@@ -52,7 +57,8 @@
           "stooklijn_buiten_koud": "Neem deze over van het Ecodan-display (Verwarming → Compensatiecurve). Het panel kan ze niet uit MELCloud lezen. Bij deze buitentemperatuur en kouder is de aanvoer de waarde hieronder.",
           "stooklijn_buiten_warm": "Bij deze buitentemperatuur en warmer is de aanvoer de waarde hieronder. Moet warmer zijn dan het koude punt.",
           "stooklijn_middenpunt": "Alleen als op het display een aanpassingspunt is ingesteld; het moet tussen het koude en het warme punt liggen.",
-          "stooklijn_verschuiving": "Verschuiving van de hele lijn zoals op het display ingesteld (−5 tot +5 °C). Meestal 0."
+          "stooklijn_verschuiving": "Verschuiving van de hele lijn zoals op het display ingesteld (−5 tot +5 °C). Meestal 0.",
+          "instelling_woonkamer": "Neem de waarde over van het Möhlenhoff-display in die kamer; het panel kan die niet uitlezen. In het schema staat hij in het display-icoon, naast de gemeten temperatuur."
         }
       }
     },

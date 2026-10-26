@@ -21,6 +21,14 @@ CONF_CURVE_MID = "stooklijn_middenpunt"            # optioneel derde punt (aanpa
 CONF_CURVE_MID_OUT = "stooklijn_midden_buiten"
 CONF_CURVE_MID_FLOW = "stooklijn_midden_aanvoer"
 CONF_CURVE_SHIFT = "stooklijn_verschuiving"        # verschuiving van de hele lijn in °C
+# Ingestelde temperatuur op de (niet-slimme) Möhlenhoff-displays per kamer: optie-sleutel en kamernaam in het schema.
+ROOM_SETPOINTS = [
+    ("instelling_woonkamer", "Woonkamer"),
+    ("instelling_slaapkamer_1", "Slaapkamer 1"),
+    ("instelling_slaapkamer_2", "Slaapkamer 2"),
+    ("instelling_slaapkamer_3", "Slaapkamer 3"),
+    ("instelling_slaapkamer_4", "Slaapkamer 4"),
+]
 
 DEFAULTS = {
     CONF_TITLE: "Ecodan",
@@ -39,4 +47,5 @@ DEFAULTS = {
     CONF_CURVE_MID_OUT: 3,
     CONF_CURVE_MID_FLOW: 28,
     CONF_CURVE_SHIFT: 0,
+    **{key: 20.0 for key, _ in ROOM_SETPOINTS},
 }
