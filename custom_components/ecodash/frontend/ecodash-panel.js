@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.7.0";
+const ECODASH_VERSION = "1.8.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -257,6 +257,40 @@ function floorsSvg(floors) {
 function schemaSvg(floors, curve) {
   return `
 <svg class="schema" id="schema" viewBox="0 0 1200 1012" role="img" aria-label="Schema van de Ecodan-installatie met buitenunit, cilinderunit en vloerverwarming">
+  <defs>
+    <!-- diepte: licht van linksboven op de randen (reliëf), slagschaduw eronder. Filtergebied over het hele schema,
+         anders verdwijnen kaarsrechte lijnen (een horizontale lijn heeft geen hoogte). -->
+    <filter id="bevel" filterUnits="userSpaceOnUse" x="-20" y="-20" width="1240" height="1052" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.4" result="blur"/>
+      <feSpecularLighting in="blur" surfaceScale="2.6" specularConstant=".75" specularExponent="16" lighting-color="#ffffff" result="spec">
+        <feDistantLight azimuth="235" elevation="42"/></feSpecularLighting>
+      <feComposite in="spec" in2="SourceAlpha" operator="in" result="specIn"/>
+      <feComposite in="SourceGraphic" in2="specIn" operator="arithmetic" k1="0" k2="1" k3=".5" k4="0" result="lit"/>
+      <feDropShadow in="lit" dx="0" dy="2" stdDeviation="1.6" flood-color="#000" style="flood-opacity:var(--sh-bevel)"/></filter>
+    <filter id="tube" filterUnits="userSpaceOnUse" x="-20" y="-20" width="1240" height="1052" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="blur"/>
+      <feSpecularLighting in="blur" surfaceScale="3.2" specularConstant="1.05" specularExponent="22" lighting-color="#ffffff" result="spec">
+        <feDistantLight azimuth="250" elevation="50"/></feSpecularLighting>
+      <feComposite in="spec" in2="SourceAlpha" operator="in" result="specIn"/>
+      <feComposite in="SourceGraphic" in2="specIn" operator="arithmetic" k1="0" k2="1" k3=".75" k4="0" result="lit"/>
+      <feDropShadow in="lit" dx="0" dy="2.5" stdDeviation="1.8" flood-color="#000" style="flood-opacity:var(--sh-tube)"/></filter>
+    <filter id="raise" filterUnits="userSpaceOnUse" x="-20" y="-20" width="1240" height="1052">
+      <feDropShadow dx="0" dy="3" stdDeviation="2.4" flood-color="#000" style="flood-opacity:var(--sh-raise)"/></filter>
+    <filter id="lift" filterUnits="userSpaceOnUse" x="-20" y="-20" width="1240" height="1052">
+      <feDropShadow dx="0" dy="9" stdDeviation="10" flood-color="#000" style="flood-opacity:var(--sh-lift)"/></filter>
+    <linearGradient id="zoneGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--zg1)"/><stop offset=".12" style="stop-color:var(--zg2)"/><stop offset="1" style="stop-color:var(--zg3)"/></linearGradient>
+    <linearGradient id="bandGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--bg1);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--bg2);stop-opacity:.5"/></linearGradient>
+    <linearGradient id="shapeGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--sg1)"/><stop offset=".5" style="stop-color:var(--sg2)"/><stop offset="1" style="stop-color:var(--sg3)"/></linearGradient>
+    <linearGradient id="cylShade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".4"/><stop offset=".22" stop-color="#fff" stop-opacity=".08"/>
+      <stop offset=".34" stop-color="#fff" stop-opacity=".12"/><stop offset=".6" stop-color="#000" stop-opacity=".04"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".42"/></linearGradient>
+    <radialGradient id="sphere" cx=".35" cy=".3" r=".75">
+      <stop offset="0" style="stop-color:var(--sp1)"/><stop offset=".45" style="stop-color:var(--sp2)"/><stop offset="1" style="stop-color:var(--sp3)"/></radialGradient>
+  </defs>
   <rect class="zone" x="16" y="16" width="290" height="384" rx="8"/>
   <rect class="zone" x="16" y="416" width="290" height="388" rx="8"/>
   <rect class="zone" x="320" y="16" width="460" height="788" rx="8"/>
@@ -401,6 +435,7 @@ function schemaSvg(floors, curve) {
 
   <g class="comp" data-c="tank" data-also="wh" tabindex="0" role="button" aria-label="Tapwatervat 200 liter">
     <rect id="tankfill" x="474" y="424" width="242" height="342" rx="36"/>
+    <rect class="tankshade" x="474" y="424" width="242" height="342" rx="36"/>
     <rect class="shape" x="470" y="420" width="250" height="350" rx="40" style="fill:none"/>
     <text class="t b" x="595" y="752" text-anchor="middle">tapwatervat 200 L</text>
     <text class="val sm" id="v-target" x="595" y="446" text-anchor="middle"></text>
@@ -595,6 +630,10 @@ const STYLE = `
   --accent:#2b2f2e; --accent-soft:#dfe4e2; --off:#8a9692; --glow:rgba(0,0,0,.28); --elec:#a87a00; --warn:#b26a00; --warn-soft:#fbeed6;
   --bad:#b3261e; --bad-soft:#f9dedc; --dot:#ffffffee;
   --plate:#ffffff; --plate-edge:#9aa6a2; --lcd:#b9c4b5; --lcd-edge:#8d9a8b;
+  /* diepte: kleurverlopen en schaduwsterkte */
+  --zg1:#eef2f0; --zg2:#e6ebe8; --zg3:#dde3e0; --bg1:#ffffff; --bg2:#f2f5f3; --sg1:#ffffff; --sg2:#f6f8f7; --sg3:#e3e8e5;
+  --shape-edge:#4f5a57; --sp1:#a3aca9; --sp2:#4b5351; --sp3:#1d2120;
+  --sh-bevel:.28; --sh-tube:.32; --sh-raise:.22; --sh-lift:.18; --sh-inset:rgba(0,0,0,.12);
   --f-display:"Barlow Semi Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
   --f-body:"IBM Plex Sans",Roboto,system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
@@ -606,7 +645,10 @@ const STYLE = `
   --hot:#ee6a52; --ret:#5d93ee; --refr:#a985e6; --dhw:#f0a33d; --cold:#4cc0d8; --sig:#8a8a8a;
   --accent:#e0e0e0; --accent-soft:#2f2f2f; --off:#6e6e6e; --elec:#e2b84a; --warn:#f0b04a; --warn-soft:#2e2615;
   --bad:#ff8a80; --bad-soft:#331b19; --dot:#ffffffd9; --glow:rgba(255,255,255,.22);
-  --plate:#2c2c2c; --plate-edge:#8a8a8a; --lcd:#aebaa9; --lcd-edge:#6f7b6c; color-scheme:dark}
+  --plate:#2c2c2c; --plate-edge:#8a8a8a; --lcd:#aebaa9; --lcd-edge:#6f7b6c;
+  --zg1:#2b2b2b; --zg2:#252525; --zg3:#1e1e1e; --bg1:#303030; --bg2:#232323; --sg1:#363636; --sg2:#262626; --sg3:#1b1b1b;
+  --shape-edge:#8c8c8c; --sp1:#ffffff; --sp2:#cfcfcf; --sp3:#6f6f6f;
+  --sh-bevel:.7; --sh-tube:.75; --sh-raise:.7; --sh-lift:.8; --sh-inset:rgba(0,0,0,.7); color-scheme:dark}
 *{box-sizing:border-box}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 #root{height:100%;overflow:auto}
@@ -644,7 +686,7 @@ h3{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:.0
 .legend i{display:inline-block;width:26px;height:0;border-top:4px solid}
 .legend i.dash{border-top:2px dashed var(--sig)}
 .board{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.viewport{position:relative;overflow:hidden;touch-action:pan-y}
+.viewport{position:relative;overflow:hidden;touch-action:pan-y;box-shadow:inset 0 3px 14px var(--sh-inset)}
 .viewport.zoomed{touch-action:none}
 .viewport.zoomed svg.schema{cursor:grab}
 svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-family:var(--f-body);user-select:none;-webkit-user-select:none}
@@ -661,17 +703,17 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .board.full .zoombar{position:absolute;flex-direction:column;padding:0;border:0;right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom))}
 .board-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1px solid var(--line)}
 /* SVG */
-.zone{fill:var(--zone);stroke:none}
+.zone{fill:url(#zoneGrad);stroke:rgba(255,255,255,.08);stroke-width:1;filter:url(#lift)}
 .zlabel{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:.08em;fill:var(--muted)}
-.pipe{fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;transition:opacity .4s}
-.pipe.thin{stroke-width:3}
+.pipe{fill:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;transition:opacity .4s;filter:url(#tube)}
+.pipe.thin{stroke-width:3.4}
 .hot{stroke:var(--hot)} .ret{stroke:var(--ret)} .refr{stroke:var(--refr)} .dhw{stroke:var(--dhw)} .cold{stroke:var(--cold)}
 .sig{fill:none;stroke:var(--sig);stroke-width:1.6;stroke-dasharray:5 4}
-.pwr{fill:none;stroke:var(--elec);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
-.shape{fill:var(--surface);stroke:var(--ink);stroke-width:1.6;transition:fill .3s,stroke .3s}
+.pwr{filter:url(#tube);fill:none;stroke:var(--elec);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.shape{fill:url(#shapeGrad);stroke:var(--shape-edge);stroke-width:1.3;transition:stroke .3s;filter:url(#bevel)}
 .shape.soft{stroke:var(--muted)}
-.ghost{fill:none;stroke:var(--off);stroke-width:1.4;stroke-dasharray:4 4}
-.band{fill:var(--surface);opacity:.55}
+.ghost{fill:none;stroke:var(--off);stroke-width:1.4;stroke-dasharray:4 4;filter:url(#raise)}
+.band{fill:url(#bandGrad);stroke:rgba(255,255,255,.07)}
 .t{fill:var(--ink);font-size:12px}
 .t.s{font-size:10.5px;fill:var(--muted)}
 .t.b{font-weight:600}
@@ -681,11 +723,12 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .val{font-family:var(--f-mono);font-size:11px;font-weight:500;fill:var(--accent);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
 .val.sm{font-size:10px}
 .val.off{fill:var(--off)} .val.hotv{fill:var(--hot)} .val.warnv{fill:var(--warn)}
-.sensor{fill:var(--accent);stroke:var(--surface);stroke-width:2}
+.sensor{fill:url(#sphere);stroke:rgba(0,0,0,.35);stroke-width:1;filter:url(#raise)}
+.tankshade{fill:url(#cylShade);pointer-events:none}
 .fill-ink{fill:var(--ink)} .fill-muted{fill:var(--muted)}
 .wifi{stroke:var(--ink)}
 .coilheat{stroke:var(--off)}
-.tplate{fill:var(--plate);stroke:var(--plate-edge);stroke-width:1.2}
+.tplate{fill:var(--plate);stroke:var(--plate-edge);stroke-width:1.2;filter:url(#bevel)}
 .tplate.heat{stroke:var(--hot);stroke-width:2}
 .tlcd{fill:var(--lcd);stroke:var(--lcd-edge);stroke-width:.6}
 .tknob{fill:var(--plate);stroke:var(--plate-edge);stroke-width:1.1}
@@ -715,7 +758,7 @@ svg.run-refr .compbody{stroke:var(--refr);stroke-width:2.6}
 .cxbox{fill:var(--accent);pointer-events:none}
 .cxtxt{fill:var(--surface);font-family:var(--f-mono);font-size:10px;font-weight:500;pointer-events:none}
 .caxis{stroke:var(--muted);stroke-width:1.3}
-.curve{fill:none;stroke:var(--hot);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round}
+.curve{fill:none;stroke:var(--hot);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round;filter:url(#tube)}
 .cpt{fill:var(--surface);stroke:var(--hot);stroke-width:1.6}
 .cnow{stroke:var(--accent);stroke-width:1.4;stroke-dasharray:3 3}
 .cdot{fill:var(--accent);stroke:var(--surface);stroke-width:2}
