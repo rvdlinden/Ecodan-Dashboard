@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.8.1";
+const ECODASH_VERSION = "1.8.2";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -210,7 +210,12 @@ const pwr = (d, g) => `<path class="pwr" d="${d}"/><path class="fl f-${g} thin" 
 
 function floorsSvg(floors) {
   const tops = [70, 300, 530];
-  let s = `<defs><linearGradient id="loopGrad" x1="0" x2="1"><stop offset="0" stop-color="var(--hot)"/><stop offset="1" stop-color="var(--ret)"/></linearGradient></defs>`;
+  // lussen: heen bovenlangs van rood naar de mengkleur bij de bocht, terug onderlangs van de mengkleur naar blauw
+  let s = `<defs>
+    <linearGradient id="loopOut" gradientUnits="userSpaceOnUse" x1="896" y1="0" x2="1056" y2="0">
+      <stop offset="0" style="stop-color:var(--hot)"/><stop offset="1" style="stop-color:var(--loopmid)"/></linearGradient>
+    <linearGradient id="loopBack" gradientUnits="userSpaceOnUse" x1="1056" y1="0" x2="896" y2="0">
+      <stop offset="0" style="stop-color:var(--loopmid)"/><stop offset="1" style="stop-color:var(--ret)"/></linearGradient></defs>`;
   floors.forEach((f, fi) => {
     const T = tops[fi];
     s += `<rect class="band" x="800" y="${T}" width="378" height="210" rx="6"/>`;
@@ -223,7 +228,9 @@ function floorsSvg(floors) {
     s += `<text class="t s" x="872" y="${T + 190}" text-anchor="middle">verdeler</text>`;
     for (let i = 0; i < 5; i++) {
       const y = T + 50 + i * 27, d = `M896,${y - 4} H1052 a4,4 0 0 1 0,8 H896`;
-      s += `<path d="${d}" fill="none" stroke="url(#loopGrad)" stroke-width="2.4" class="b-heat"/><path class="fl f-heat thin" d="${d}"/>`;
+      s += `<path d="M896,${y - 4} H1052 a4,4 0 0 1 0,8" fill="none" stroke="url(#loopOut)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
+        + `<path d="M1052,${y + 4} H896" fill="none" stroke="url(#loopBack)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
+        + `<path class="fl f-heat thin" d="${d}"/>`;
     }
     s += `<text class="t s" x="976" y="${T + 192}" text-anchor="middle">4–5 lussen door de kamers</text></g>`;
     s += `<g class="comp" data-c="act" tabindex="0" role="button" aria-label="Ventielaandrijvingen">`;
@@ -632,6 +639,7 @@ function fixed25(v) { return v == null ? "" : Math.abs(v - 25) < 0.05 ? "25,0 °
 /* ------------------------- stijl ----------------------------------- */
 const STYLE = `
 :host{
+  --loopmid:color-mix(in srgb,var(--hot) 50%,var(--ret));
   --bg:#eef1ef; --surface:#fafbfa; --ink:#1b2422; --muted:#5b6865; --line:#c3ccc8; --zone:#e3e8e5;
   --hot:#c9412c; --ret:#2c64c4; --refr:#7a4bbf; --dhw:#d9820f; --cold:#2a9bb5; --sig:#6c7a76;
   --accent:#2b2f2e; --accent-soft:#dfe4e2; --off:#8a9692; --glow:rgba(0,0,0,.28); --elec:#a87a00; --warn:#b26a00; --warn-soft:#fbeed6;
