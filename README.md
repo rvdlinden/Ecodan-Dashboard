@@ -26,8 +26,10 @@ kWh-meters in de meterkast die je al in HA hebt.
   - De booster heater gloeit als hij aan staat; de kleur in het tapwatervat volgt de
     tanktemperatuur.
   - Warmtevraag: draait de warmtepomp op ruimteverwarming, dan kleurt het signaal naar de FTC6
-    rood. Met slimme thermostaten (climate-entiteiten) of een eigen warmtevraagsensor kleuren ook
-    de stip en de regelunit van de kamer die warmte vraagt.
+    rood. Het display-icoon en de regelunit van een kamer die warmte vraagt kleuren ook rood.
+  - Vloerverwarming: er lopen alleen bolletjes door lussen waarvan de kraan open staat (zie
+    *Kamers*). Een open aandrijving krijgt een rode rand, een dichte lus
+    wordt vaag weergegeven en een verdieping met alle kranen dicht valt helemaal stil.
 - **Inzoomen en volledig scherm:** knijp met twee vingers, dubbeltik of gebruik de knoppen + en −
   om in te zoomen, en sleep om te schuiven. De knop ⛶ zet het schema schermvullend en begint dan
   zo groot dat het de hoogte (staand) of breedte (liggend) vult. Op een pc zoom je met Ctrl +
@@ -191,9 +193,14 @@ Standaard staan deze kamers met hun temperatuurmeter in het schema:
 
 De thermostaten (Möhlenhoff) zijn niet uit te lezen. Hun ingestelde temperatuur vul je per kamer in
 onder **Configureren**. In het schema staat die waarde in het display-icoon en de gemeten temperatuur
-ernaast. In de lijst *Kamertemperaturen* en in *Wat gebeurt er nu?* zie je beide, met een indicatie:
-meer dan 0,3 °C onder de ingestelde waarde betekent waarschijnlijk warmtevraag, meer dan 0,5 °C erboven
-betekent waarschijnlijk dichte kranen. Met de override `verdiepingen` kan een kamer ook een eigen
+ernaast. In de lijst *Kamertemperaturen* en in *Wat gebeurt er nu?* zie je beide.
+
+Of de kraan van een kamer open staat is niet uit te lezen; het panel schat het net als een
+thermostaat met hysterese: 0,2 °C onder de ingestelde waarde gaat de kraan open (de kamer vraagt
+warmte), 0,2 °C erboven gaat hij weer dicht en daartussen blijft de vorige stand staan. Bij een
+climate-entiteit geldt `hvac_action: heating`. Op de begane grond en de 2e verdieping gaan alle
+lussen samen open of dicht, op de 1e verdieping per kamer; de badkamer volgt slaapkamer 1 en de
+overloop stroomt altijd mee. Zonder meting of ingestelde waarde telt een kraan als open. Met de override `verdiepingen` kan een kamer ook een eigen
 `instelling` krijgen, bijv. `{naam: Woonkamer, entity: sensor.x, instelling: 21}`.
 
 Bestaat zo'n sensor niet, dan zoekt het panel een climate-entiteit op kamernaam

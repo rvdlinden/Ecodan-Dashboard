@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.8.4";
+const ECODASH_VERSION = "1.8.5";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -50,6 +50,9 @@ const DEFAULT_FLOORS = [
     { naam: "Slaapkamer 3", entity: "sensor.hobbykamer_thermo_hygro_temperature" }] },
   { naam: "BEGANE GROND", hoofdactuator: true, lussen: 5, kamers: [{ naam: "Woonkamer", entity: "sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur" }] },
 ];
+// Kraan open/dicht per kamer, afgeleid uit gemeten tegen ingesteld: open vanaf ROOM_HYST onder de ingestelde waarde,
+// dicht vanaf ROOM_HYST erboven, daartussen blijft de vorige stand staan (de thermostaat schakelt met hysterese).
+const ROOM_HYST = 0.2;        // °C
 const P_IDLE = 30;            // W: daaronder is een groep in stand-by (regelaar, wifi)
 // Boven dit vermogen op de groep van de buitenunit draaien compressor en ventilator. De kWh-meter reageert direct,
 // MELCloud geeft de frequentie pas na een paar minuten door; zo draait de ventilator meteen mee.
@@ -153,6 +156,10 @@ function resolveEntities(hass, cfg) {
     }),
   }));
   r.floors.forEach((f, fi) => f.kamers.forEach((k, j) => { r[`room_${fi}_${j}`] = k.ent; }));
+  // welke kamerthermostaat stuurt de aandrijving van een lus (via: de badkamer volgt slaapkamer 1)
+  r.floors.forEach(f => f.loops.forEach(l => {
+    const j = f.kamers.findIndex(k => slug(k.naam) === slug(l.via || l.naam)); l.ctl = j < 0 ? null : j;
+  }));
   return r;
 }
 
@@ -236,9 +243,8 @@ function floorsSvg(floors) {
     const T = tops[fi];
     s += `<rect class="band" x="800" y="${T}" width="378" height="210" rx="6"/>`;
     s += `<text class="t b fl-name" x="852" y="${T + 22}">${esc(f.naam)}</text>`;
-    s += pipe(`M834,${T + 50} H860`, "hot", "heat");
     const hop = (T + 160) <= 580 ? `H842 a8,8 0 0 0 -16,0 H812` : `H812`;
-    s += pipe(`M860,${T + 160} ${hop}`, "ret", "heat");
+    s += `<g class="ff" data-ff="${fi}">${pipe(`M834,${T + 50} H860`, "hot", "heat")}${pipe(`M860,${T + 160} ${hop}`, "ret", "heat")}</g>`;
     // lussen gelijk verdeeld over de hoogte van de verdeler
     const n = f.loops.length, step = n > 1 ? 108 / (n - 1) : 0, ly = i => T + 50 + i * step;
     const acts = f.loops.map((l, i) => l.act ? i : -1).filter(i => i >= 0);
@@ -247,9 +253,10 @@ function floorsSvg(floors) {
     s += `<text class="t s" x="872" y="${T + 190}" text-anchor="middle">verdeler</text>`;
     f.loops.forEach((l, i) => {
       const y = ly(i), d = `M896,${y - 4} H1052 a4,4 0 0 1 0,8 H896`;
-      s += `<path d="M896,${y - 4} H1052 a4,4 0 0 1 0,8" fill="none" stroke="url(#loopOut)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
+      s += `<g class="lus" data-l="${fi}-${i}">`
+        + `<path d="M896,${y - 4} H1052 a4,4 0 0 1 0,8" fill="none" stroke="url(#loopOut)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
         + `<path d="M1052,${y + 4} H896" fill="none" stroke="url(#loopBack)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
-        + `<path class="fl f-heat thin" d="${d}"/>`;
+        + `<path class="fl f-heat thin" d="${d}"/></g>`;
       if (l.naam && step >= 20) s += `<text class="t loop" x="902" y="${y - 8}">${esc(l.naam.toLowerCase())}${l.via ? ` (via ${esc(l.via.toLowerCase())})` : ""}</text>`;
     });
     // lus zonder aandrijving: alleen het handwiel op de verdeler; er loopt eventueel een stuurdraad achterlangs
@@ -259,8 +266,8 @@ function floorsSvg(floors) {
     const own = acts.length, what = f.main ? "samen open of dicht" : own === n ? "elk een eigen kraan" : own ? `${own} met eigen kraan` : "zonder kranen";
     s += `<text class="t s" x="976" y="${T + 192}" text-anchor="middle">${n} ${n === 1 ? "lus" : "lussen"}, ${what}</text></g>`;
     s += `<g class="comp" data-c="act" tabindex="0" role="button" aria-label="Ventielaandrijvingen">`;
-    if (f.main) s += `<rect class="shape" x="841" y="${T + 44}" width="12" height="12" rx="2"/>`;
-    acts.forEach(i => { s += `<rect class="shape" x="884" y="${ly(i) - 6}" width="12" height="12" rx="2"/>`; });
+    if (f.main) s += `<rect class="shape kraan" data-k="${fi}-m" x="841" y="${T + 44}" width="12" height="12" rx="2"/>`;
+    acts.forEach(i => { s += `<rect class="shape kraan" data-k="${fi}-${i}" x="884" y="${ly(i) - 6}" width="12" height="12" rx="2"/>`; });
     s += `</g>`;
     s += `<g class="comp" data-c="tstat" tabindex="0" role="button" aria-label="Thermostaten ${esc(f.naam.toLowerCase())}">`;
     s += `<path class="sig s-vraag" d="M1172,${T + 49} H1182"/>`;
@@ -352,11 +359,14 @@ function schemaSvg(floors, curve) {
   </g>
   ${pipe("M440,240 H676", "hot", "prim")}
   ${pipe("M704,240 H804 a8,8 0 0 1 16,0 H834", "hot", "heat")}
-  ${pipe("M834,240 V120", "hot", "heat")}
-  ${pipe("M834,240 V580", "hot", "heat")}
+  <!-- stijgleidingen per stuk, zodat een verdieping met alle kranen dicht stil valt (data-ff: verdiepingen erachter) -->
+  <g class="ff" data-ff="0">${pipe("M834,240 V120", "hot", "heat")}</g>
+  <g class="ff" data-ff="1 2">${pipe("M834,240 V350", "hot", "heat")}</g>
+  <g class="ff" data-ff="2">${pipe("M834,350 V580", "hot", "heat")}</g>
   ${pipe("M690,254 V420", "hot", "dhw")}
-  ${pipe("M812,230 V330", "ret", "heat")}
-  ${pipe("M812,690 V330", "ret", "heat")}
+  <g class="ff" data-ff="0">${pipe("M812,230 V330", "ret", "heat")}</g>
+  <g class="ff" data-ff="2">${pipe("M812,690 V460", "ret", "heat")}</g>
+  <g class="ff" data-ff="1 2">${pipe("M812,460 V330", "ret", "heat")}</g>
   ${pipe("M812,330 H745", "ret", "heat")}
   ${pipe("M745,330 H698 a8,8 0 0 0 -16,0 H440", "ret", "prim")}
   ${pipe("M720,650 H745 V330", "ret", "dhw")}
@@ -565,8 +575,8 @@ const C = {
   thw5: { name: "Tankvoeler THW5", where: "Halverwege het vat", text: "Temperatuur van het tapwater. Zakt die onder de ingestelde waarde min de hysterese (vaak 5–10 °C), dan schakelt de warmtepomp naar tapwater. Tap je warm water, dan stroomt er onderin koud leidingwater bij en zakt deze temperatuur; daaraan herkent het panel dat het water via het vat loopt." },
   cyl: { name: "Cilinderunit EHST20D-VM2D", where: "Technische ruimte", text: "Alles-in-één binnenunit: platenwisselaar, pomp, 3-wegklep, 2 kW booster heater, expansievat, regelaar en een 200 L tapwatervat in één kast. 'VM2' = 1-fase, 2 kW booster heater. De H in EHST staat voor alleen verwarmen: deze unit kan niet koelen." },
   manifold: { name: "Vloerverwarmingsverdelers", where: "Eén per verdieping", text: "Verdelen het warme water over de lussen van een verdieping: 5 op de begane grond, 5 op de 1e en 3 op de 2e verdieping. Elke lus is een slang die door één kamer (of een deel ervan) in de dekvloer loopt en afgekoeld terugkomt." },
-  act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' die een lus open of dicht zetten, aangestuurd door de thermostaat via de regelunit. Op de begane grond en de 2e verdieping zit er één op de hoofdaanvoer van de verdeler: de thermostaat zet daar alle lussen tegelijk open of dicht. Op de 1e verdieping heeft elke slaapkamer een eigen aandrijving; die van de badkamer volgt de thermostaat van slaapkamer 1. De lus naar de overloop heeft geen aandrijving en staat altijd open. Lussen zonder aandrijving hebben alleen een handwiel (het rondje op de verdeler). Niet zichtbaar in MELCloud." },
-  tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat (Möhlenhoff) opent de aandrijving(en) die op zijn kanaal van de regelunit zitten. In het display-icoon staat de ingestelde temperatuur uit Configureren, ernaast de gemeten temperatuur. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt is daardoor niet te zien. Het panel leidt de warmtevraag af uit de warmtepomp: draait die op ruimteverwarming, dan vraagt minstens één thermostaat warmte en kleurt het signaal naar de FTC6 rood." },
+  act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' die een lus open of dicht zetten, aangestuurd door de thermostaat via de regelunit. Op de begane grond en de 2e verdieping zit er één op de hoofdaanvoer van de verdeler: de thermostaat zet daar alle lussen tegelijk open of dicht. Op de 1e verdieping heeft elke slaapkamer een eigen aandrijving; die van de badkamer volgt de thermostaat van slaapkamer 1. De lus naar de overloop heeft geen aandrijving en staat altijd open. Lussen zonder aandrijving hebben alleen een handwiel (het rondje op de verdeler). De aandrijvingen zijn niet uit te lezen: het panel neemt aan dat een kraan open staat zodra de kamer 0,2 °C onder de ingestelde waarde zakt en weer dicht gaat 0,2 °C erboven. Een open kraan krijgt een rode rand en alleen door open lussen lopen bolletjes als de vloerverwarming draait." },
+  tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat (Möhlenhoff) opent de aandrijving(en) die op zijn kanaal van de regelunit zitten. In het display-icoon staat de ingestelde temperatuur uit Configureren, ernaast de gemeten temperatuur. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt, schat het panel uit gemeten tegen ingesteld: 0,2 °C eronder gaat de kraan open en kleurt het display-icoon rood, 0,2 °C erboven gaat hij weer dicht. De warmtevraag naar de FTC6 leidt het panel af uit de warmtepomp: draait die op ruimteverwarming, dan vraagt minstens één thermostaat warmte en kleurt het signaal naar de FTC6 rood." },
   unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een hybride cv-ketel, een mengvat met extra zonepomp en meer. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat MELCloud ze altijd meestuurt. Voelers zonder sensor geven een vaste 25,0 °C." },
   curve: { name: "Stooklijn (compensatiecurve)", where: "Instelling in de FTC6", text: "Met Operation mode Curve bepaalt de FTC6 de aanvoertemperatuur uit de buitentemperatuur (TH7): hoe kouder buiten, hoe warmer het water naar de vloeren. Tot en met het koude punt geldt de hoogste aanvoer, vanaf het warme punt de laagste, en daartussen loopt de lijn recht (via het aanpassingspunt als dat is ingesteld). De groene stip is de huidige buitentemperatuur op de lijn: de aanvoer waar de FTC6 nu op mikt. De rode stip is de werkelijke aanvoer (THW1) zodra de vloerverwarming draait. De punten komen niet uit MELCloud maar uit Configureren; pas ze daar aan als je de stooklijn op het Ecodan-display verandert." },
   zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. In Home Assistant maakt MELCloud daar een apart apparaat voor ('Ecodan Huis'). Het apparaat 'Ecodan' is de unit zelf met het tapwater." },
@@ -757,6 +767,9 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .t{fill:var(--ink);font-size:12px}
 .t.s{font-size:10.5px;fill:var(--muted)}
 .t.loop{font-size:9px;fill:var(--muted)}
+.lus.dicht .b-heat{opacity:.35}
+.lus.dicht .fl, .ff.dicht .fl{display:none}
+.kraan.open{stroke:var(--hot);stroke-width:2}
 .cap{fill:url(#shapeGrad);stroke:var(--shape-edge);stroke-width:1.2;filter:url(#bevel)}
 .t.b{font-weight:600}
 .t.h{font-family:var(--f-display);font-weight:600;font-size:15px}
@@ -929,7 +942,7 @@ function mountDashboard(host, root) {
   $("#menu").appendChild(host._menu);
 
   const svg = $("#schema"), detail = $("#detail");
-  const st = { sel: null, selKey: null, sig: "", measured: { out: null, in: null, src: null }, midnight: null, timers: [], tankHist: [] };
+  const st = { open: {}, sel: null, selKey: null, sig: "", measured: { out: null, in: null, src: null }, midnight: null, timers: [], tankHist: [] };
   const S = id => (id ? host._hass.states[id] : undefined);
   const ok = s => s && s.state !== "unavailable" && s.state !== "unknown";
   const num = id => { const s = S(id); if (!ok(s)) return null; const v = parseFloat(s.state); return isFinite(v) ? v : null; };
@@ -938,16 +951,21 @@ function mountDashboard(host, root) {
   const kwh = id => { const v = num(id); if (v == null) return null; const u = S(id).attributes.unit_of_measurement; return u === "Wh" ? v / 1000 : u === "MWh" ? v * 1000 : v; };
 
   // gemeten tegen ingesteld: een indicatie, de thermostaat zelf is niet uit te lezen
-  const vsSet = (t, sp) => { const d = t - sp;
-    return d < -0.3 ? `${fmt(-d, 1)} °C onder de ingestelde waarde: deze kamer vraagt waarschijnlijk warmte.`
-      : d > 0.5 ? `${fmt(d, 1)} °C boven de ingestelde waarde: de kranen van deze kamer staan waarschijnlijk dicht.`
-      : "Rond de ingestelde waarde."; };
+  const vsSet = (v, sp) => { const d = v.t - sp;
+    const pos = Math.abs(d) < 0.05 ? "Op de ingestelde waarde" : `${fmt(Math.abs(d), 1)} °C ${d < 0 ? "onder" : "boven"} de ingestelde waarde`;
+    return v.heat == null ? pos + "." : `${pos}: de kraan staat waarschijnlijk ${v.heat ? "open en de kamer vraagt warmte" : "dicht"}.`; };
+  // per verdieping per lus: stroomt er water door (kraan open, of geen kraan)?
+  const loopsOpen = X => R.floors.map((f, fi) => {
+    const roomOpen = j => X.rooms[fi]?.[j]?.heat ?? true;
+    const main = !f.main || !f.kamers.length || f.kamers.some((_, j) => roomOpen(j));
+    return f.loops.map(l => main && (!l.act || f.main || l.ctl == null || roomOpen(l.ctl)));
+  });
 
   /* entiteitenlijst */
   const byKey = {};
   const rooms = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => ({ k: `room_${fi}_${j}`, n: r.naam, c: "tstat",
     x: "Temperatuur van de slimme meter naast de kamerthermostaat (Möhlenhoff). De thermostaat zelf is niet slim en niet zichtbaar in Home Assistant; de ingestelde temperatuur komt uit Configureren en staat in het display-icoon in het schema.",
-    now: X => { const v = X.rooms[fi]?.[j]; return v?.t == null ? "" : `${f.naam.charAt(0) + f.naam.slice(1).toLowerCase()}: gemeten ${fmt(v.t, 1)} °C` + (r.sp == null ? "." : `, ingesteld ${fmt(r.sp, 1)} °C. ` + vsSet(v.t, r.sp)); } })));
+    now: X => { const v = X.rooms[fi]?.[j]; return v?.t == null ? "" : `${f.naam.charAt(0) + f.naam.slice(1).toLowerCase()}: gemeten ${fmt(v.t, 1)} °C` + (r.sp == null ? "." : `, ingesteld ${fmt(r.sp, 1)} °C. ` + vsSet(v, r.sp)); } })));
   const groups = rooms.length ? [...G.slice(0, 5), { title: "Kamertemperaturen", note: "Gemeten door de slimme meters naast de kamerthermostaten; de ingestelde waarde staat in het schema in het display-icoon.", items: rooms }, ...G.slice(5)] : G;
   $("#groups").innerHTML = groups.map(g => `<div class="group"><h3>${g.title}</h3><p class="gnote">${g.note}</p><ul class="ents">` +
     g.items.map(e => { byKey[e.k] = e;
@@ -985,10 +1003,20 @@ function mountDashboard(host, root) {
     const running = X.compRun || !!X.pump1;
     X.mode = !running ? "rust" : X.dhw ? (X.bh1 ? "legionella" : "tapwater") : "verwarming";
     // kamers
-    X.rooms = R.floors.map(f => f.kamers.map(r => {
+    // heat: de kraan van de kamer staat open. Bij een climate-entiteit uit hvac_action, anders afgeleid (zie ROOM_HYST);
+    // null = onbekend (geen meting of geen ingestelde waarde)
+    X.rooms = R.floors.map((f, fi) => f.kamers.map((r, j) => {
       const s = S(r.ent); if (!ok(s)) return null;
-      const a = s.attributes, t = r.ent.startsWith("climate.") ? parseFloat(a.current_temperature) : parseFloat(s.state);
-      return { t: isFinite(t) ? t : null, sp: parseFloat(a.temperature), heat: a.hvac_action === "heating", climate: r.ent.startsWith("climate.") };
+      const climate = r.ent.startsWith("climate."), a = s.attributes;
+      const t = climate ? parseFloat(a.current_temperature) : parseFloat(s.state);
+      let heat = null;
+      if (climate) heat = a.hvac_action === "heating";
+      else if (isFinite(t) && r.sp != null) {
+        const d = t - r.sp, key = `${fi}-${j}`;
+        heat = d <= -ROOM_HYST ? true : d >= ROOM_HYST ? false : st.open[key] ?? d < 0;
+        st.open[key] = heat;
+      }
+      return { t: isFinite(t) ? t : null, sp: parseFloat(a.temperature), heat, climate };
     }));
     // warmtevraag: uit een eigen signaal, uit slimme thermostaten (hvac_action), of afgeleid uit de warmtepomp
     const vr = bin(R.vraag), clim = X.rooms.flat().filter(r => r && r.climate);
@@ -1112,7 +1140,14 @@ function mountDashboard(host, root) {
       : `Vandaag gemeten: ${fmt(X.mTot, 2)} kWh${X.consTot != null && X.dailyFresh ? ` · MELCloud schat ${fmt(X.consTot, 2)} kWh` : ""}${st.measured.src === "statistiek" ? " (uit vermogensstatistiek)" : ""}.`);
     setT("v-meter2", X.copMeas != null ? `Warmte vandaag ${fmt(X.prodTot, 2)} kWh ÷ gemeten stroom = COP ${fmt(X.copMeas, 2)} (gemeten).`
       : X.consTot != null && !X.dailyFresh ? `MELCloud-dagwaarden zijn van ${dagTijd(X.dailySince)}: nog geen gemeten COP.` : "");
+    // stroming door de vloer: alleen door lussen waarvan de kraan open staat; onbekend telt als open
+    const loopOpen = loopsOpen(X), floorOpen = loopOpen.map(o => o.some(Boolean));
+    $$(".ff").forEach(el => el.classList.toggle("dicht", !el.dataset.ff.split(" ").some(i => floorOpen[+i])));
     R.floors.forEach((f, fi) => {
+      const open = loopOpen[fi];
+      f.loops.forEach((l, i) => $$(`.lus[data-l="${fi}-${i}"]`).forEach(el => el.classList.toggle("dicht", !open[i])));
+      $$(`.kraan[data-k^="${fi}-"]`).forEach(el => { const k = el.dataset.k.split("-")[1];
+        el.classList.toggle("open", k === "m" ? open.some(Boolean) : !!open[+k]); });
       const anyHeat = (X.rooms[fi] || []).some(r => r && r.heat);
       $$(`.regel[data-floor="${fi}"]`).forEach(el => el.classList.toggle("heat", anyHeat));
       f.kamers.forEach((r, j) => {
@@ -1196,6 +1231,13 @@ function mountDashboard(host, root) {
     if (X.pump1 && !X.freq) li.push(`Pomp 1 draait zonder compressor: nadraaien na een run, of ontdooien.`);
     if (X.vraagSrc !== "afgeleid")
       li.push(X.vraag ? `<b>Er is warmtevraag</b> vanuit ${X.vraagSrc === "signaal" ? "het warmtevraagsignaal" : "minstens één thermostaat"}.` : `Geen van de thermostaten vraagt nu warmte.`);
+    if (X.pump1 && !X.dhw) {
+      const lo = loopsOpen(X), cap = s => s.charAt(0) + s.slice(1).toLowerCase();
+      li.push(`<b>Stroming door de vloer:</b> ` + R.floors.map((f, fi) => {
+        const n = lo[fi].filter(Boolean).length, names = f.loops.filter((l, i) => lo[fi][i] && l.naam).map(l => l.naam.toLowerCase());
+        return `${esc(cap(f.naam))} ${!n ? "dicht" : n === f.loops.length ? "alle lussen" : names.length === n ? esc(names.join(", ")) : `${n} van ${f.loops.length} lussen`}`;
+      }).join(" · ") + ".");
+    }
     const kamers = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => [r.naam, X.rooms[fi]?.[j]?.t, r.sp])).filter(([, t]) => t != null);
     if (kamers.length) li.push(`<b>Kamers (gemeten / ingesteld):</b> ${kamers.map(([n, t, sp]) => `${esc(n)} ${fmt(t, 1)}${sp == null ? "" : " / " + fmt(sp, 1)} °C`).join(" · ")}.`);
     if (X.hotDraw) li.push(`<b>Er wordt warm water getapt.</b> De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))} en het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld: er stroomt koud leidingwater het vat in.`);
