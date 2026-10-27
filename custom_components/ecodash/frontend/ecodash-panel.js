@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.8.3";
+const ECODASH_VERSION = "1.8.4";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -42,11 +42,11 @@ const MELCLOUD_KEYS = Object.keys(ENT).concat(["water_heater", "opmode"]);
 // anders heeft elke lus een eigen aandrijving tenzij actuator: false (dan alleen een handwiel).
 const DEFAULT_FLOORS = [
   { naam: "2E VERDIEPING", hoofdactuator: true, lussen: 3,
-    kamers: [{ naam: "Slaapkamer 4", entity: "sensor.kantoor_thermo_hygro_temperature" }] },
+    kamers: [{ naam: "Slaapkamer 4", entity: "sensor.kantoor_kantoor_thermo_hygro_co2_temperatuur" }] },
   { naam: "1E VERDIEPING", lussen: [{ naam: "Overloop", actuator: false }, { naam: "Badkamer", via: "Slaapkamer 1" },
     "Slaapkamer 1", "Slaapkamer 2", "Slaapkamer 3"], kamers: [
-    { naam: "Slaapkamer 1", entity: "sensor.slaapkamer_thermo_hygro_temperature" },
-    { naam: "Slaapkamer 2", entity: "sensor.kinderkamer_thermo_hygro_temperature" },
+    { naam: "Slaapkamer 1", entity: "sensor.slaapkamer_slaapkamer_thermo_hygro_co2_temperatuur" },
+    { naam: "Slaapkamer 2", entity: "sensor.kinderkamer_kinderkamer_thermo_hygro_co2_temperatuur" },
     { naam: "Slaapkamer 3", entity: "sensor.hobbykamer_thermo_hygro_temperature" }] },
   { naam: "BEGANE GROND", hoofdactuator: true, lussen: 5, kamers: [{ naam: "Woonkamer", entity: "sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur" }] },
 ];

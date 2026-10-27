@@ -183,9 +183,9 @@ Standaard staan deze kamers met hun temperatuurmeter in het schema:
 
 | Verdieping | Kamer | Entiteit |
 |---|---|---|
-| 2e verdieping | Slaapkamer 4 | `sensor.kantoor_thermo_hygro_temperature` |
-| 1e verdieping | Slaapkamer 1 | `sensor.slaapkamer_thermo_hygro_temperature` |
-| 1e verdieping | Slaapkamer 2 | `sensor.kinderkamer_thermo_hygro_temperature` |
+| 2e verdieping | Slaapkamer 4 | `sensor.kantoor_kantoor_thermo_hygro_co2_temperatuur` |
+| 1e verdieping | Slaapkamer 1 | `sensor.slaapkamer_slaapkamer_thermo_hygro_co2_temperatuur` |
+| 1e verdieping | Slaapkamer 2 | `sensor.kinderkamer_kinderkamer_thermo_hygro_co2_temperatuur` |
 | 1e verdieping | Slaapkamer 3 | `sensor.hobbykamer_thermo_hygro_temperature` |
 | Begane grond | Woonkamer | `sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur` |
 
@@ -247,7 +247,7 @@ verdiepingen:
       - Slaapkamer 3
     kamers:
       - Slaapkamer 1
-      - {naam: Slaapkamer 2, entity: sensor.kinderkamer_thermo_hygro_temperature}
+      - {naam: Slaapkamer 2, entity: sensor.kinderkamer_kinderkamer_thermo_hygro_co2_temperatuur}
       - Slaapkamer 3
   - naam: Begane grond
     hoofdactuator: true
