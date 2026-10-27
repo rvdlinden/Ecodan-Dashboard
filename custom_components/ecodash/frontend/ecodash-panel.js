@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.8.3";
+const ECODASH_VERSION = "1.8.4";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -137,7 +137,8 @@ function resolveEntities(hass, cfg) {
   const setp = Object.fromEntries(Object.entries(cfg.instellingen || {}).map(([n, v]) => [slug(n), +v]));
   r.floors = floors.slice(0, 3).map(f => ({
     naam: String(f.naam || f.name || "").toUpperCase(),
-    ...loopsOf(f),
+    ...loopsOf((f.lussen ?? f.loops ?? f.hoofdactuator ?? f.main_actuator) == null
+      ? { ...DEFAULT_FLOORS.find(d => slug(d.naam) === slug(f.naam || f.name || "")), ...f } : f),
     kamers: (f.kamers || f.rooms || []).slice(0, 4).map(k => {
       const naam = typeof k === "string" ? k : (k.naam || k.name || "");
       const given = typeof k === "object" && k ? pick(k.entity) : null;
@@ -156,7 +157,8 @@ function resolveEntities(hass, cfg) {
   return r;
 }
 
-// lussen: een aantal of een lijst van namen / {naam, actuator, via}; zonder opgave 5 lussen met elk een aandrijving
+// lussen: een aantal of een lijst van namen / {naam, actuator, via}. Zonder opgave neemt een verdieping de lussen over
+// van de standaardverdieping met dezelfde naam, en anders 5 lussen met elk een aandrijving.
 function loopsOf(f) {
   const main = !!(f.hoofdactuator ?? f.main_actuator);
   const l = f.lussen ?? f.loops;

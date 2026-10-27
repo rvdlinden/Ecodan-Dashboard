@@ -213,8 +213,10 @@ Het schema tekent per verdieping de lussen op de verdeler en waar de aandrijving
 Een lus zonder eigen aandrijving staat in het schema met een rond handwiel op de verdeler. Met de
 override `verdiepingen` geef je per verdieping `hoofdactuator: true` (één aandrijving op de aanvoer)
 en `lussen`: een aantal of een lijst van namen of `{naam, actuator, via}`. Zonder `hoofdactuator`
-heeft elke lus een eigen aandrijving, tenzij `actuator: false`. Zonder `lussen` tekent het panel 5
-lussen.
+heeft elke lus een eigen aandrijving, tenzij `actuator: false`. Zonder `lussen` en `hoofdactuator`
+neemt een verdieping de lussen over van de standaardverdieping met dezelfde naam (*Begane grond*,
+*1e verdieping*, *2e verdieping*); bij een andere naam tekent het panel 5 lussen met elk een
+aandrijving.
 
 ### Overrides
 
