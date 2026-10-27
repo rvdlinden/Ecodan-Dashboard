@@ -200,6 +200,22 @@ Bestaat zo'n sensor niet, dan zoekt het panel een climate-entiteit op kamernaam
 (`climate.woonkamer` of een climate-entiteit met de naam *Woonkamer*). Een andere indeling stel je
 in met de override `verdiepingen`.
 
+### Verdelers en aandrijvingen
+
+Het schema tekent per verdieping de lussen op de verdeler en waar de aandrijvingen (kranen) zitten:
+
+| Verdieping | Lussen | Aandrijving |
+|---|---|---|
+| 2e verdieping | 3 | Eén op de hoofdaanvoer: alle lussen in slaapkamer 4 gaan samen open of dicht |
+| 1e verdieping | 5 | Eigen aandrijving voor badkamer en slaapkamer 1, 2 en 3; de badkamer volgt de thermostaat van slaapkamer 1. De overloop heeft geen aandrijving |
+| Begane grond | 5 | Eén op de hoofdaanvoer: de woonkamerthermostaat zet de hele begane grond open of dicht |
+
+Een lus zonder eigen aandrijving staat in het schema met een rond handwiel op de verdeler. Met de
+override `verdiepingen` geef je per verdieping `hoofdactuator: true` (één aandrijving op de aanvoer)
+en `lussen`: een aantal of een lijst van namen of `{naam, actuator, via}`. Zonder `hoofdactuator`
+heeft elke lus een eigen aandrijving, tenzij `actuator: false`. Zonder `lussen` tekent het panel 5
+lussen.
+
 ### Overrides
 
 Sleutels voor losse entiteiten: `buiten`, `freq`, `cond`, `aanvoer`, `retour`, `pump1`, `klep`,
@@ -209,7 +225,7 @@ Sleutels voor losse entiteiten: `buiten`, `freq`, `cond`, `aanvoer`, `retour`, `
 
 | Sleutel | Uitleg |
 |---|---|
-| `verdiepingen` | Indeling van de woning (max. 3 verdiepingen, max. 4 kamers per verdieping), van boven naar beneden. Een kamer is een naam of `{naam, entity}` met een temperatuursensor of climate-entiteit; met `entity: false` zoekt het panel niets |
+| `verdiepingen` | Indeling van de woning (max. 3 verdiepingen, max. 4 kamers per verdieping), van boven naar beneden. Een kamer is een naam of `{naam, entity}` met een temperatuursensor of climate-entiteit; met `entity: false` zoekt het panel niets. Per verdieping beschrijft `lussen` de verdeler (zie *Verdelers en aandrijvingen*) |
 | `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Zonder deze sleutel geldt: warmtevraag = een climate-entiteit met `hvac_action: heating`, of anders: de warmtepomp draait op ruimteverwarming |
 | `tapwater_debiet` | Sensor voor de actuele waterdoorstroming. Standaard `sensor.meterkast_watermeter_water_gebruik` (zie *Tapwater en de watermeter*) |
 
@@ -219,13 +235,23 @@ Een voorbeeld:
 water_heater: water_heater.ecodan
 verdiepingen:
   - naam: 2e verdieping
+    hoofdactuator: true
+    lussen: 3
     kamers: [Slaapkamer 4]
   - naam: 1e verdieping
+    lussen:
+      - {naam: Overloop, actuator: false}
+      - {naam: Badkamer, via: Slaapkamer 1}
+      - Slaapkamer 1
+      - Slaapkamer 2
+      - Slaapkamer 3
     kamers:
       - Slaapkamer 1
       - {naam: Slaapkamer 2, entity: sensor.kinderkamer_thermo_hygro_temperature}
       - Slaapkamer 3
   - naam: Begane grond
+    hoofdactuator: true
+    lussen: 5
     kamers: [Woonkamer]
 tapwater_debiet: sensor.watermeter_actueel_waterverbruik
 ```
