@@ -4,7 +4,7 @@
  * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.8.0";
+const ECODASH_VERSION = "1.8.1";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
@@ -288,6 +288,13 @@ function schemaSvg(floors, curve) {
       <stop offset="0" stop-color="#000" stop-opacity=".4"/><stop offset=".22" stop-color="#fff" stop-opacity=".08"/>
       <stop offset=".34" stop-color="#fff" stop-opacity=".12"/><stop offset=".6" stop-color="#000" stop-opacity=".04"/>
       <stop offset="1" stop-color="#000" stop-opacity=".42"/></linearGradient>
+    <!-- spiraal: warm (aanvoer) bovenin, afgekoeld (retour) bij de uitgang rechtsonder -->
+    <linearGradient id="coilGrad" gradientUnits="userSpaceOnUse" x1="0" y1="420" x2="0" y2="650">
+      <stop offset="0" style="stop-color:var(--hot)"/><stop offset="1" style="stop-color:var(--ret)"/></linearGradient>
+    <!-- vat: gelaagd, koud leidingwater onderin en warm tapwater bovenin -->
+    <linearGradient id="tankGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--hot)"/><stop offset=".55" style="stop-color:var(--dhw);stop-opacity:.55"/>
+      <stop offset="1" style="stop-color:var(--ret)"/></linearGradient>
     <radialGradient id="sphere" cx=".35" cy=".3" r=".75">
       <stop offset="0" style="stop-color:var(--sp1)"/><stop offset=".45" style="stop-color:var(--sp2)"/><stop offset="1" style="stop-color:var(--sp3)"/></radialGradient>
   </defs>
@@ -442,7 +449,7 @@ function schemaSvg(floors, curve) {
   </g>
   <g class="comp" data-c="coil" tabindex="0" role="button" aria-label="Warmtewisselspiraal in het vat">
     <rect class="hit" x="520" y="460" width="180" height="200"/>
-    ${pipe("M690,420 V470 H530 V500 H690 V530 H530 V560 H690 V590 H530 V620 H690 V650 H720", "dhw", "dhw", true)}
+    ${pipe("M690,420 V470 H530 V500 H690 V530 H530 V560 H690 V590 H530 V620 H690 V650 H720", "coil", "dhw", true)}
   </g>
   <g class="comp" data-c="imm" tabindex="0" role="button" aria-label="Dompelaar, optioneel">
     <rect class="ghost" id="imm-shape" x="530" y="684" width="130" height="16" rx="3"/>
@@ -521,7 +528,7 @@ const C = {
   filter: { name: "Filter en debietmeter", where: "Retourleiding, in de cilinderunit", text: "Het filter vangt vuil uit het verwarmingswater (onderdeel van het onderhoud). De debietmeter meet hoeveel liter per minuut er stroomt; voor de SWM60 hoort dat tussen 7,2 en 17,2 L/min te liggen. Deze waarde zit niet in de MELCloud-integratie." },
   thw2: { name: "Retourvoeler THW2", where: "Retourleiding, in de cilinderunit", text: "Temperatuur van het water dat terugkomt. Het verschil met de aanvoer (ΔT) laat zien hoeveel warmte er is afgegeven. Bij vloerverwarming is 3–7 °C verschil normaal." },
   tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit; het geeft zijn warmte af via de spiraal. De kleur in het vat volgt de tanktemperatuur." },
-  coil: { name: "Spiraal in het vat", where: "In het tapwatervat", text: "Als de 3-wegklep op tapwater staat, stroomt het warme verwarmingswater door deze spiraal en warmt zo het vat op." },
+  coil: { name: "Spiraal in het vat", where: "In het tapwatervat", text: "Als de 3-wegklep op tapwater staat, stroomt het warme verwarmingswater bovenin de spiraal in, geeft zijn warmte af aan het vat en verlaat de spiraal afgekoeld rechtsonder. Daarom loopt de kleur van rood naar blauw." },
   imm: { name: "Dompelaar (immersion heater)", where: "Zou in het vat zitten", text: "Een optioneel elektrisch element direct in het tapwatervat. De standaard EHST20D-uitvoeringen hebben er geen; de entiteit bestaat omdat de regelaar het wel kán aansturen." },
   thw5: { name: "Tankvoeler THW5", where: "Halverwege het vat", text: "Temperatuur van het tapwater. Zakt die onder de ingestelde waarde min de hysterese (vaak 5–10 °C), dan schakelt de warmtepomp naar tapwater. Tap je warm water, dan stroomt er onderin koud leidingwater bij en zakt deze temperatuur; daaraan herkent het panel dat het water via het vat loopt." },
   cyl: { name: "Cilinderunit EHST20D-VM2D", where: "Technische ruimte", text: "Alles-in-één binnenunit: platenwisselaar, pomp, 3-wegklep, 2 kW booster heater, expansievat, regelaar en een 200 L tapwatervat in één kast. 'VM2' = 1-fase, 2 kW booster heater. De H in EHST staat voor alleen verwarmen: deze unit kan niet koelen." },
@@ -707,7 +714,7 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .zlabel{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:.08em;fill:var(--muted)}
 .pipe{fill:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;transition:opacity .4s;filter:url(#tube)}
 .pipe.thin{stroke-width:3.4}
-.hot{stroke:var(--hot)} .ret{stroke:var(--ret)} .refr{stroke:var(--refr)} .dhw{stroke:var(--dhw)} .cold{stroke:var(--cold)}
+.hot{stroke:var(--hot)} .ret{stroke:var(--ret)} .refr{stroke:var(--refr)} .dhw{stroke:var(--dhw)} .cold{stroke:var(--cold)} .coil{stroke:url(#coilGrad)}
 .sig{fill:none;stroke:var(--sig);stroke-width:1.6;stroke-dasharray:5 4}
 .pwr{filter:url(#tube);fill:none;stroke:var(--elec);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
 .shape{fill:url(#shapeGrad);stroke:var(--shape-edge);stroke-width:1.3;transition:stroke .3s;filter:url(#bevel)}
@@ -735,7 +742,7 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .t.room{font-size:10px}
 .tsp{fill:#1e2a20;font-family:var(--f-body);font-size:8.2px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;pointer-events:none}
 .regel.heat{stroke:var(--hot);stroke-width:2.2}
-#tankfill{fill:var(--dhw);opacity:.08;transition:opacity .6s}
+#tankfill{fill:url(#tankGrad);opacity:.12;transition:opacity .6s}
 /* stroom-overlay: bolletjes die in de tekenrichting van het pad lopen */
 .fl{fill:none;stroke:var(--dot);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:0.1 14;display:none;
   animation:flow var(--sp,1.2s) linear infinite;pointer-events:none}
@@ -845,7 +852,7 @@ const TEMPLATE = (floors, curve) => `
           <span><i style="border-color:var(--hot)"></i>aanvoer (warm water erheen)</span>
           <span><i style="border-color:var(--ret)"></i>retour (afgekoeld terug)</span>
           <span><i style="border-color:var(--refr)"></i>koudemiddel R32</span>
-          <span><i style="border-color:var(--dhw)"></i>tapwater / spiraal</span>
+          <span><i style="border-color:var(--dhw)"></i>warm tapwater</span>
           <span><i style="border-color:var(--cold)"></i>koud leidingwater</span>
           <span><i style="border-color:var(--elec)"></i>stroom 230 V</span>
           <span><i class="dash"></i>stuursignaal</span>
@@ -1041,7 +1048,7 @@ function mountDashboard(host, root) {
     svg.style.setProperty("--sp-ein", clamp(2.4 - (X.pIn || 0) / 1000, 0.4, 2.4).toFixed(2) + "s");
     $("#port-heat").classList.toggle("on", !!X.pump1 && !X.dhw);
     $("#port-dhw").classList.toggle("on", !!X.pump1 && X.dhw);
-    $("#tankfill").style.opacity = X.tank == null ? 0.05 : clamp((X.tank - 15) / 45 * 0.3, 0.05, 0.3).toFixed(2);
+    $("#tankfill").style.opacity = X.tank == null ? 0.05 : clamp(0.1 + (X.tank - 15) / 45 * 0.25, 0.1, 0.35).toFixed(2);
 
     // schema: waarden
     setT("v-buiten", deg(X.buiten));
