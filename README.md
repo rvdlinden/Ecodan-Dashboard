@@ -183,9 +183,9 @@ Standaard staan deze kamers met hun temperatuurmeter in het schema:
 
 | Verdieping | Kamer | Entiteit |
 |---|---|---|
-| 2e verdieping | Slaapkamer 4 | `sensor.kantoor_thermo_hygro_temperature` |
-| 1e verdieping | Slaapkamer 1 | `sensor.slaapkamer_thermo_hygro_temperature` |
-| 1e verdieping | Slaapkamer 2 | `sensor.kinderkamer_thermo_hygro_temperature` |
+| 2e verdieping | Slaapkamer 4 | `sensor.kantoor_kantoor_thermo_hygro_co2_temperatuur` |
+| 1e verdieping | Slaapkamer 1 | `sensor.slaapkamer_slaapkamer_thermo_hygro_co2_temperatuur` |
+| 1e verdieping | Slaapkamer 2 | `sensor.kinderkamer_kinderkamer_thermo_hygro_co2_temperatuur` |
 | 1e verdieping | Slaapkamer 3 | `sensor.hobbykamer_thermo_hygro_temperature` |
 | Begane grond | Woonkamer | `sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur` |
 
@@ -213,10 +213,8 @@ Het schema tekent per verdieping de lussen op de verdeler en waar de aandrijving
 Een lus zonder eigen aandrijving staat in het schema met een rond handwiel op de verdeler. Met de
 override `verdiepingen` geef je per verdieping `hoofdactuator: true` (één aandrijving op de aanvoer)
 en `lussen`: een aantal of een lijst van namen of `{naam, actuator, via}`. Zonder `hoofdactuator`
-heeft elke lus een eigen aandrijving, tenzij `actuator: false`. Zonder `lussen` en `hoofdactuator`
-neemt een verdieping de lussen over van de standaardverdieping met dezelfde naam (*Begane grond*,
-*1e verdieping*, *2e verdieping*); bij een andere naam tekent het panel 5 lussen met elk een
-aandrijving.
+heeft elke lus een eigen aandrijving, tenzij `actuator: false`. Zonder `lussen` tekent het panel 5
+lussen.
 
 ### Overrides
 
@@ -249,7 +247,7 @@ verdiepingen:
       - Slaapkamer 3
     kamers:
       - Slaapkamer 1
-      - {naam: Slaapkamer 2, entity: sensor.kinderkamer_thermo_hygro_temperature}
+      - {naam: Slaapkamer 2, entity: sensor.kinderkamer_kinderkamer_thermo_hygro_co2_temperatuur}
       - Slaapkamer 3
   - naam: Begane grond
     hoofdactuator: true

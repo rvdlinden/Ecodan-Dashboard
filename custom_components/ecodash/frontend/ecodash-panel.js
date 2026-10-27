@@ -42,11 +42,11 @@ const MELCLOUD_KEYS = Object.keys(ENT).concat(["water_heater", "opmode"]);
 // anders heeft elke lus een eigen aandrijving tenzij actuator: false (dan alleen een handwiel).
 const DEFAULT_FLOORS = [
   { naam: "2E VERDIEPING", hoofdactuator: true, lussen: 3,
-    kamers: [{ naam: "Slaapkamer 4", entity: "sensor.kantoor_thermo_hygro_temperature" }] },
+    kamers: [{ naam: "Slaapkamer 4", entity: "sensor.kantoor_kantoor_thermo_hygro_co2_temperatuur" }] },
   { naam: "1E VERDIEPING", lussen: [{ naam: "Overloop", actuator: false }, { naam: "Badkamer", via: "Slaapkamer 1" },
     "Slaapkamer 1", "Slaapkamer 2", "Slaapkamer 3"], kamers: [
-    { naam: "Slaapkamer 1", entity: "sensor.slaapkamer_thermo_hygro_temperature" },
-    { naam: "Slaapkamer 2", entity: "sensor.kinderkamer_thermo_hygro_temperature" },
+    { naam: "Slaapkamer 1", entity: "sensor.slaapkamer_slaapkamer_thermo_hygro_co2_temperatuur" },
+    { naam: "Slaapkamer 2", entity: "sensor.kinderkamer_kinderkamer_thermo_hygro_co2_temperatuur" },
     { naam: "Slaapkamer 3", entity: "sensor.hobbykamer_thermo_hygro_temperature" }] },
   { naam: "BEGANE GROND", hoofdactuator: true, lussen: 5, kamers: [{ naam: "Woonkamer", entity: "sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur" }] },
 ];
@@ -137,8 +137,7 @@ function resolveEntities(hass, cfg) {
   const setp = Object.fromEntries(Object.entries(cfg.instellingen || {}).map(([n, v]) => [slug(n), +v]));
   r.floors = floors.slice(0, 3).map(f => ({
     naam: String(f.naam || f.name || "").toUpperCase(),
-    ...loopsOf((f.lussen ?? f.loops ?? f.hoofdactuator ?? f.main_actuator) == null
-      ? { ...DEFAULT_FLOORS.find(d => slug(d.naam) === slug(f.naam || f.name || "")), ...f } : f),
+    ...loopsOf(f),
     kamers: (f.kamers || f.rooms || []).slice(0, 4).map(k => {
       const naam = typeof k === "string" ? k : (k.naam || k.name || "");
       const given = typeof k === "object" && k ? pick(k.entity) : null;
@@ -157,8 +156,7 @@ function resolveEntities(hass, cfg) {
   return r;
 }
 
-// lussen: een aantal of een lijst van namen / {naam, actuator, via}. Zonder opgave neemt een verdieping de lussen over
-// van de standaardverdieping met dezelfde naam, en anders 5 lussen met elk een aandrijving.
+// lussen: een aantal of een lijst van namen / {naam, actuator, via}; zonder opgave 5 lussen met elk een aandrijving
 function loopsOf(f) {
   const main = !!(f.hoofdactuator ?? f.main_actuator);
   const l = f.lussen ?? f.loops;
