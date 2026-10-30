@@ -329,6 +329,13 @@ function schemaSvg(floors, curve) {
       <stop offset=".34" stop-color="#fff" stop-opacity=".12"/><stop offset=".6" stop-color="#000" stop-opacity=".04"/>
       <stop offset="1" stop-color="#000" stop-opacity=".42"/></linearGradient>
     <!-- spiraal: warm (aanvoer) bovenin, afgekoeld (retour) bij de uitgang rechtsonder -->
+    <!-- platenwisselaars: water warmt op in 3 (onder retour, boven aanvoer); in 16 koelt het primaire water af en warmt het tapwater op -->
+    <linearGradient id="hex3W" gradientUnits="userSpaceOnUse" x1="0" y1="720" x2="0" y2="600">
+      <stop offset="0" style="stop-color:var(--ret)"/><stop offset="1" style="stop-color:var(--hot)"/></linearGradient>
+    <linearGradient id="hex16P" gradientUnits="userSpaceOnUse" x1="0" y1="412" x2="0" y2="470">
+      <stop offset="0" style="stop-color:var(--hot)"/><stop offset="1" style="stop-color:var(--ret)"/></linearGradient>
+    <linearGradient id="hex16S" gradientUnits="userSpaceOnUse" x1="0" y1="470" x2="0" y2="412">
+      <stop offset="0" style="stop-color:var(--cold)"/><stop offset="1" style="stop-color:var(--dhw)"/></linearGradient>
     <linearGradient id="coilGrad" gradientUnits="userSpaceOnUse" x1="0" y1="420" x2="0" y2="650">
       <stop offset="0" style="stop-color:var(--hot)"/><stop offset="1" style="stop-color:var(--ret)"/></linearGradient>
     <!-- vat: gelaagd, koud leidingwater onderin en warm tapwater bovenin -->
@@ -475,12 +482,9 @@ function schemaSvg(floors, curve) {
 
   <g class="comp" data-c="hex" tabindex="0" role="button" aria-label="Platenwisselaar koudemiddel-water">
     <rect class="shape" x="372" y="590" width="40" height="140" rx="4"/>
-    <g stroke="var(--muted)" stroke-width="1.2">
-      <line x1="378" y1="606" x2="406" y2="606"/><line x1="378" y1="622" x2="406" y2="622"/>
-      <line x1="378" y1="638" x2="406" y2="638"/><line x1="378" y1="654" x2="406" y2="654"/>
-      <line x1="378" y1="670" x2="406" y2="670"/><line x1="378" y1="686" x2="406" y2="686"/>
-      <line x1="378" y1="702" x2="406" y2="702"/><line x1="378" y1="718" x2="406" y2="718"/>
-    </g>
+    <path class="hexwall" d="M392,594 V726"/>
+    ${pipe("M372,600 H382 V720 H372", "refr", "refr", true)}
+    <path class="pipe thin b-prim" style="stroke:url(#hex3W)" d="M412,720 H402 V600 H412"/><path class="fl f-prim thin" d="M412,720 H402 V600 H412"/>
     <text class="t s" x="360" y="568">platenwisselaar</text>
     <text class="val" id="v-cond" x="392" y="582" text-anchor="middle"></text>
     <text class="asg sm" x="360" y="554">4,2 kW warmte</text>
@@ -519,11 +523,9 @@ function schemaSvg(floors, curve) {
   <!-- tapwaterkant: platenwisselaar water-water 16, kalkvanger 17, sanitaire pomp 18 -->
   <g class="comp" data-c="hex16" tabindex="0" role="button" aria-label="Platenwisselaar water-water voor tapwater">
     <rect class="shape" x="516" y="395" width="40" height="90" rx="4"/>
-    <g stroke="var(--muted)" stroke-width="1.2">
-      <line x1="522" y1="409" x2="550" y2="409"/><line x1="522" y1="423" x2="550" y2="423"/>
-      <line x1="522" y1="437" x2="550" y2="437"/><line x1="522" y1="451" x2="550" y2="451"/>
-      <line x1="522" y1="465" x2="550" y2="465"/>
-    </g>
+    <path class="hexwall" d="M536,399 V481"/>
+    <path class="pipe thin b-dhw" style="stroke:url(#hex16P)" d="M516,412 H526 V470 H516"/><path class="fl f-dhw thin" d="M516,412 H526 V470 H516"/>
+    <path class="pipe thin b-dhw" style="stroke:url(#hex16S)" d="M556,470 H546 V412 H556"/><path class="fl f-dhw thin" d="M556,470 H546 V412 H556"/>
     <text class="t s" x="536" y="499" text-anchor="middle">wisselaar</text>
     <text class="t s" x="536" y="511" text-anchor="middle">tapwater</text>
     ${nb(536, 525, 16)}
@@ -581,24 +583,25 @@ function schemaSvg(floors, curve) {
     <rect class="shape" x="580" y="300" width="140" height="400" rx="34" style="fill:none"/>
     <text class="t b" x="650" y="672" text-anchor="middle">tapwatervat</text>
     <text class="t b" x="650" y="687" text-anchor="middle">200 L</text>
-    <text class="val sm" id="v-target" x="650" y="326" text-anchor="middle"></text>
+    <text class="val sm" id="v-target" x="660" y="320" text-anchor="middle"></text>
     ${nb(650, 650, 15)}
   </g>
+  ${pipe("M580,325 H598 V506 a8,8 0 0 0 8,8", "dhw", "dhw", true)}
   <g class="comp" data-c="imm" tabindex="0" role="button" aria-label="Dompelaar, niet ingebouwd">
     <rect class="ghost" id="imm-shape" x="606" y="590" width="88" height="12" rx="3"/>
     <text class="t s" x="650" y="618" text-anchor="middle">dompelaar n.v.t.</text>
     ${nb(700, 596, 19)}
   </g>
   <g class="comp" data-c="thw5" tabindex="0" role="button" aria-label="Tankvoelers THW5A en THW5B">
-    <rect class="hit" x="640" y="400" width="86" height="180"/>
-    <circle class="sensor" cx="720" cy="420" r="7"/>
-    <text class="t s" x="708" y="416" text-anchor="end">THW5A</text>
-    <text class="val" id="v-tank" x="708" y="431" text-anchor="end"></text>
-    ${nb(700, 446, 26)}
-    <circle class="sensor" cx="720" cy="530" r="7"/>
-    <text class="t s" x="708" y="526" text-anchor="end">THW5B</text>
-    <text class="asg" x="708" y="541" text-anchor="end">38,5 °C</text>
-    ${nb(700, 556, 27)}
+    <rect class="hit" x="640" y="430" width="86" height="106"/>
+    <circle class="sensor" cx="720" cy="450" r="7"/>
+    <text class="t s" x="708" y="446" text-anchor="end">THW5A</text>
+    <text class="val" id="v-tank" x="708" y="461" text-anchor="end"></text>
+    ${nb(700, 476, 26)}
+    <circle class="sensor" cx="720" cy="500" r="7"/>
+    <text class="t s" x="708" y="496" text-anchor="end">THW5B</text>
+    <text class="asg" x="708" y="511" text-anchor="end">38,5 °C</text>
+    ${nb(700, 526, 27)}
   </g>
 
   <text class="zlabel" x="32" y="442">HOOFDSCHERM</text>
@@ -669,7 +672,7 @@ const C = {
   comp: { name: "Compressor", where: "In de buitenunit", text: "Het hart van de warmtepomp. Drukt het koudemiddel samen, waardoor het heet wordt. Het is een inverter: het toerental (in Hz) past zich aan de vraag aan. 0 Hz = uit." },
   th7: { name: "Buitenvoeler TH7", where: "Achterkant buitenunit", text: "Meet de buitentemperatuur. De regelaar gebruikt die voor de stooklijn: hoe kouder het buiten is, hoe warmer het water naar de vloeren gaat." },
   refr: { name: "Koudemiddelleidingen (R32)", where: "Tussen tuin en technische ruimte", text: "Twee koperen leidingen: een dikke gasleiding (heet gas naar binnen) en een dunne vloeistofleiding (terug naar buiten). Dit is een split-systeem: het koudemiddel komt tot in de cilinderunit. De paarse bolletjes lopen zodra de compressor draait; hoe hoger het toerental, hoe sneller." },
-  hex: { name: "Platenwarmtewisselaar", where: "In de cilinderunit", text: "Hier wordt koudemiddel-warmte omgezet in warm water. Het hete koudemiddel condenseert (wordt weer vloeibaar) en geeft daarbij zijn warmte af aan het verwarmingswater dat er aan de andere kant langs stroomt." },
+  hex: { name: "Platenwisselaar koudemiddel-water (3)", where: "In de cilinderunit", text: "Hier wordt koudemiddel-warmte omgezet in warm water. Links stroomt het koudemiddel (paars): het hete gas condenseert en verlaat de wisselaar als vloeistof langs TH2. Rechts stroomt het verwarmingswater van onder naar boven en warmt op. De platen houden beide circuits gescheiden." },
   ftc: { name: "FTC6 regelaar + MELCloud wifi", where: "In de cilinderunit (achter het bedieningspaneel)", text: "Het brein. De FTC6 leest alle voelers, stuurt pomp, klep en heaters aan, berekent het energieverbruik en praat via de wifi-adapter met MELCloud. Home Assistant haalt alle waarden op uit MELCloud, niet rechtstreeks uit de unit. Daardoor lopen de waarden een paar minuten achter." },
   bh1: { name: "Booster heater 1 (2 kW)", where: "In de aanvoerleiding, in de cilinderunit", text: "Een elektrisch verwarmingselement direct in het water. Springt bij als de warmtepomp het alleen niet redt: strenge vorst, ontdooien, of de wekelijkse legionella-run (vat naar ±60 °C). Dit is de dure route: 1 kWh stroom = 1 kWh warmte." },
   pump1: { name: "Pomp 1 (circulatiepomp)", where: "In de cilinderunit", text: "Ingebouwde pomp die het water rondpompt door de platenwisselaar en daarna naar het vat óf de vloeren. Staat de pomp uit, dan stroomt er niets en staan er in het schema geen bolletjes op de waterleidingen." },
@@ -682,7 +685,7 @@ const C = {
   taps: { name: "Tappunten warm water", where: "Keuken (begane grond), wasbak en douche (1e verdieping)", text: "Tijdens het tappen draait er geen pomp. De waterleidingdruk duwt koud water onderin het vat, en dat duwt het warme water bovenuit naar de kraan. Pas als het vat daardoor genoeg afkoelt, gaat de warmtepomp het vat opwarmen; dan draaien pomp 1 en de sanitaire pomp 18. Welke kraan open staat is niet te meten; het schema laat alle drie de tappunten oplichten zodra er warm water getapt wordt." },
   ds18: { name: "1-wire-voeler (DS18B20) op de warmwaterleiding", where: "Idee: op de uitgaande warmwaterleiding van het vat", text: "De Asgard heeft een 1-wire-aansluiting voor maximaal zes DS18B20-voelers. Een voeler op de warmwaterleiding warmt binnen seconden op zodra er getapt wordt. Zo is tappen direct en betrouwbaar te zien, ook zonder dat het vat al merkbaar afkoelt." },
   asgOut: { name: "Extra waarden via Asgard (CN105)", where: "Buitenunit en pomp", text: "Met de Asgard op CN105 komen de waarden direct van de FTC6, binnen seconden in plaats van na maximaal 20 minuten via MELCloud. Extra: persgastemperatuur, zuiggas, ventilatortoerental, ontdooien, compressorstarts en pompstand. Let op: de servicecodes voor de buitenunit werken niet op alle SUZ-buitenunits; dat moet in de praktijk blijken. De waarden in dit ontwerp zijn voorbeelden." },
-  hex16: { name: "Platenwisselaar water-water (16)", where: "In de cilinderunit, naast het vat", text: "Het vat heeft geen spiraal. Staat de 3-wegklep (5) op tapwater, dan stroomt het verwarmingswater door deze tweede platenwisselaar. Aan de andere kant pompt de sanitaire pomp (18) koud water van onderin het vat erdoorheen; dat komt opgewarmd bovenin het vat terug. Het verwarmingswater en het drinkwater raken elkaar niet." },
+  hex16: { name: "Platenwisselaar water-water (16)", where: "In de cilinderunit, naast het vat", text: "Het vat heeft geen spiraal. Staat de 3-wegklep (5) op tapwater, dan stroomt het verwarmingswater door de linkerhelft van deze tweede platenwisselaar en via de debietmeter (11) terug naar de warmtepomp. Door de rechterhelft pompt de sanitaire pomp (18) koud water van onderin het vat; dat gaat opgewarmd via de kalkvanger (17) en pomp 18 terug het vat in en komt vrij net onder THW5B. Het verwarmingswater en het drinkwater raken elkaar niet." },
   pump18: { name: "Sanitaire pomp (18)", where: "Tussen wisselaar 16 en het vat", text: "Pompt tijdens het opwarmen van tapwater het water van onderin het vat via de kalkvanger (17) en wisselaar 16 terug naar bovenin. Draait alleen in tapwaterstand. MELCloud geeft deze pomp niet apart door; het schema laat hem meedraaien met de tapwaterstand." },
   scale: { name: "Kalkvanger (17)", where: "Sanitair circuit, voor pomp 18", text: "Vangt kalk op die uit het drinkwater neerslaat bij het opwarmen, zodat wisselaar 16 en pomp 18 niet dichtslibben. Hoort bij het jaarlijkse onderhoud." },
   safety: { name: "Expansievat, manometer, ontluchter en overdrukventiel", where: "Aanvoerleiding, bovenin de cilinderunit", text: "Expansievat 10 (12 L, voordruk 1 bar) vangt het uitzetten van het verwarmingswater op. Manometer 7 toont de waterdruk. Automatische ontluchter 9 laat lucht ontsnappen en overdrukventiel 8 opent bij 3 bar. Niets hiervan is uit te lezen in MELCloud." },
@@ -912,6 +915,7 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .fill-ink{fill:var(--ink)} .fill-muted{fill:var(--muted)}
 .wifi{stroke:var(--ink)}
 .coilheat{stroke:var(--off)}
+.hexwall{stroke:var(--muted);stroke-width:1.4;stroke-dasharray:3 2;fill:none}
 .nb circle{fill:var(--surface);stroke:var(--muted);stroke-width:.8;opacity:.9}
 .nb text{font-family:var(--f-mono);font-size:7.2px;fill:var(--muted);text-anchor:middle;pointer-events:none}
 svg.run-dhw .pump18{stroke:var(--accent);stroke-width:2.4}

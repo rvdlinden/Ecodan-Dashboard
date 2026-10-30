@@ -11,8 +11,12 @@ en *Table 4.1* (Part names and functions).
 ## Wat er verandert ten opzichte van 1.8.5
 
 - **Geen spiraal in het vat.** Het vat (15) wordt opgewarmd via een aparte platenwisselaar
-  water-water (16). De sanitaire pomp (18) pompt water van onderin het vat via de kalkvanger (17)
-  door die wisselaar en terug bovenin het vat.
+  water-water (16), getekend met twee gescheiden circuits:
+  - links het primaire water: van 3-wegklep 5 door 16 en via debietmeter 11 terug;
+  - rechts het tapwater: van onderin het vat door 16, dan via kalkvanger 17 en sanitaire pomp 18
+    terug het vat in. Binnen het vat loopt die leiding door tot net onder THW5B (27).
+- **Platenwisselaar 3** heeft ook twee gescheiden circuits: links het koudemiddel R32, rechts het
+  verwarmingswater dat van onder naar boven opwarmt.
 - **Primair circuit zoals in Figure 8.2:**
   - koudemiddel naar platenwisselaar 3, met TH2 (28) en drukvoeler (29);
   - aanvoer via booster heater 4 en THW1 (24) naar 3-wegklep 5;
