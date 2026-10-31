@@ -31,7 +31,8 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
     Ontdooit de buitenunit (*Defrost*), dan staat dat onder de ventilator.
   - Verwarmingswater zodra pomp 1 draait. De 3-wegklep bepaalt de route: naar de verdelers
     en vloerlussen (verwarming) óf door platenwisselaar 16 naast het vat (tapwater); dan draait
-    ook de sanitaire pomp 18 die het tapwater door de wisselaar pompt. De tak die niet in
+    ook de sanitaire pomp 18 die het tapwater door de wisselaar pompt (pomp 4 van de FTC6,
+    *Water Pump 4 Status*). De tak die niet in
     gebruik is wordt gedimd en de actieve klepuitgang kleurt rood.
   - Stroom (geel) van de meterkast naar de buiten- en binnenunit zodra een groep meer dan 30 W
     (stand-by) gebruikt; sneller bij meer vermogen.
@@ -281,6 +282,7 @@ Sleutels voor losse entiteiten (met de Asgard-naam waarop het panel zoekt):
 | `heatsrc` | `heat_source` | `wifi` / `uptime` | `wifi_signal_db` / `esp_uptime` |
 | `imm` | binary `immersion_heater` | `esp_temp` / `esp_version` | `esp_internal_temperature` / `esp_version` |
 | `pump2` | binary `water_pump_2_status` | `mixing` | `mixing_tank_temp` |
+| `pump4` | binary `water_pump_4_status` (sanitaire pomp 18) | | |
 | `z1_feed` / `z1_return` | `z1_feed_temp` / `z1_return_temp` | `mix_step` | `mixing_valve_step_z1` |
 
 De servicewaarden van de buitenunit: `discharge`, `superheat`, `subcool`, `ou_liquid`, `ou_2phase`,
