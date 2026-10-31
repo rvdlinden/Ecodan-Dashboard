@@ -6,9 +6,22 @@ De waarden in het schema zijn live: ze komen van de **Asgard** (een ESP32-S3 met
 [esphome-ecodan-hp](https://github.com/gekkekoe/esphome-ecodan-hp) op de CN105-aansluiting van de
 FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al in HA hebt.
 
-- **Installatieschema:** buitenunit in de tuin, cilinderunit in de technische ruimte
-  (platenwisselaar, booster heater, pomp 1, 3-wegklep, tapwatervat met spiraal), de verdelers en
-  thermostaten per verdieping en de kWh-meters in de meterkast.
+- **Installatieschema:** buitenunit in de tuin, cilinderunit in de technische ruimte, de verdelers en
+  thermostaten per verdieping, de tappunten en de kWh-meters in de meterkast. De cilinderunit is
+  getekend volgens *Figure 8.2* (Water system diagram) uit de servicehandleiding van de EHST20D-VM2D,
+  met de onderdeelnummers uit *Table 4.1*:
+  - platenwisselaar koudemiddel-water (3) met gescheiden circuits, TH2 (28) en drukvoeler (29);
+  - aanvoer via booster heater (4) en THW1 (24) naar de 3-wegklep (5); retour via debietmeter (11),
+    THW2 (25), filter (12), pomp 1 (13) en afsluiter (14);
+  - expansievat (10), manometer (7), ontluchter (9) en overdrukventiel (8);
+  - tapwatervat (15) zonder spiraal: het wordt opgewarmd via platenwisselaar water-water (16),
+    kalkvanger (17) en sanitaire pomp (18); de terugvoer loopt in het vat tot net onder THW5B;
+  - tankvoelers THW5A (26, boven) en THW5B (27, onder), overdrukventiel tapwater (21) en
+    terugslagklep (33).
+- **Hoofdscherm:** een nagebouwd *Main screen* van de bediening (servicehandleiding 9-1) met de live
+  waarden: tapwater en verwarming in bedrijf of stand-by, warmtepomp, booster heater,
+  legionellapreventie, vakantiemodus, Eco, de kamertemperatuur van het bedieningspaneel, de
+  vattemperatuur en het aanvoerdoel van de FTC6.
 - **Live stromen:** lopende bolletjes laten zien waar nu iets stroomt.
   - Koudemiddel (paars) zodra de compressor draait; sneller bij een hoger toerental. De
     ventilator in de buitenunit draait mee en bij de compressor staat de frequentie. In de
@@ -17,12 +30,15 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
     frequentie (nog) 0 is, dan draaien ventilator en koudemiddel toch mee en staat er *draait*.
     Ontdooit de buitenunit (*Defrost*), dan staat dat onder de ventilator.
   - Verwarmingswater zodra pomp 1 draait. De 3-wegklep bepaalt de route: naar de verdelers
-    en vloerlussen (verwarming) óf door de spiraal in het vat (tapwater). De tak die niet in
+    en vloerlussen (verwarming) óf door platenwisselaar 16 naast het vat (tapwater); dan draait
+    ook de sanitaire pomp 18 die het tapwater door de wisselaar pompt. De tak die niet in
     gebruik is wordt gedimd en de actieve klepuitgang kleurt rood.
   - Stroom (geel) van de meterkast naar de buiten- en binnenunit zodra een groep meer dan 30 W
     (stand-by) gebruikt; sneller bij meer vermogen.
-  - Tapwater: koud leidingwater het vat in en warm water naar de kranen, alleen als er echt
-    warm water getapt wordt (zie *Tapwater en de watermeter*).
+  - Tapwater: koud leidingwater het vat in en warm water naar de keuken (begane grond) en de
+    wasbak en douche (1e verdieping), alleen als er echt warm water getapt wordt (zie *Tapwater en
+    de watermeter*). Dan lichten alle drie de tappunten op; welke kraan open staat is niet te meten.
+    Tijdens het tappen draait er geen pomp: de waterleidingdruk duwt het warme water naar de kraan.
   - De booster heater gloeit als hij aan staat; de kleur in het tapwatervat volgt de
     tanktemperatuur.
   - Warmtevraag: staat ingang IN1 van de FTC6 aan (*In1 Thermostat*), dan kleurt het signaal
@@ -36,8 +52,10 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
   scrollwiel of knijpen op het touchpad.
 - **Kamertemperaturen:** per kamer de temperatuur van de slimme meter naast de (domme)
   thermostaat, in het schema, in de lijst *Kamertemperaturen* en in *Wat gebeurt er nu?*
-- **Waarden bij elk onderdeel:** buitentemperatuur (TH7), compressorfrequentie,
-  condensatietemperatuur, aanvoer (THW1), retour (THW2) met ΔT, debiet (L/min), de tankvoelers
+- **Waarden bij elk onderdeel:** buitentemperatuur (TH7), compressorfrequentie, persgas, zuiggas,
+  ventilatortoerental, compressorstarts en pompstand onder de buitenunit, condensatietemperatuur,
+  geleverde warmte en TH2 bij platenwisselaar 3, IN1-warmtevraag bij de FTC6,
+  aanvoer (THW1), retour (THW2) met ΔT, debiet (L/min), de tankvoelers
   THW5A (boven) en THW5B (onder) met doel en DHW-modus, wifi-signaal van de Asgard, vermogen en
   verbruik van vandaag per kWh-meter, en de kamertemperaturen.
 - **Kerncijfers bovenaan:** buiten met de regeling en het aanvoerdoel van de FTC6, compressor,
@@ -315,6 +333,9 @@ Beperkingen:
 - De stroming verschijnt pas als het afkoelen gemeld is; korte tapbeurten (handen wassen) zie je
   niet.
 - Tot 15 minuten na een douchebeurt wordt ook een toiletspoeling als *via het vat* getoond.
+- Het groene punt op de warmwaterleiding (*1-wire*) is een optie: een DS18B20-voeler op de
+  1-wire-aansluiting van de Asgard warmt binnen seconden op zodra er getapt wordt. Die voeler zit er
+  nu niet; het panel gebruikt hem nog niet.
 
 ## Hoe het werkt
 
