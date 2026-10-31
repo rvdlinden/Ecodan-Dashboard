@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.10.0";
+const ECODASH_VERSION = "1.10.1";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -35,6 +35,7 @@ const ENT = {
   delta_t:     { d: "sensor", s: ["delta_t"] },
   flow:        { d: "sensor", s: ["flow_rate"] },
   pump1:       { d: "binary_sensor", s: ["water_pump_status", "water_pump"] },
+  pump4:       { d: "binary_sensor", s: ["water_pump_4_status"] },
   pump_speed:  { d: "sensor", s: ["pump_speed"] },
   pump_w:      { d: "sensor", s: ["pump_consumption"] },
   pump_fb:     { d: "sensor", s: ["pump_feedback_status"] },
@@ -564,13 +565,13 @@ function schemaSvg(floors, curve) {
     <rect class="shape" x="516" y="395" width="40" height="90" rx="4"/>
     <path class="hexwall" d="M536,399 V481"/>
     <path class="pipe thin b-dhw" style="stroke:url(#hex16P)" d="M516,412 H526 V470 H516"/><path class="fl f-dhw thin" d="M516,412 H526 V470 H516"/>
-    <path class="pipe thin b-dhw" style="stroke:url(#hex16S)" d="M556,470 H546 V412 H556"/><path class="fl f-dhw thin" d="M556,470 H546 V412 H556"/>
+    <path class="pipe thin b-san" style="stroke:url(#hex16S)" d="M556,470 H546 V412 H556"/><path class="fl f-san thin" d="M556,470 H546 V412 H556"/>
     <text class="t s" x="536" y="499" text-anchor="middle">wisselaar</text>
     <text class="t s" x="536" y="511" text-anchor="middle">tapwater</text>
     ${nb(536, 525, 16)}
   </g>
-  ${pipe("M580,640 H566 V470 H556", "cold", "dhw", true)}
-  ${pipe("M556,412 H566 V325 H580", "dhw", "dhw", true)}
+  ${pipe("M580,640 H566 V470 H556", "cold", "san", true)}
+  ${pipe("M556,412 H566 V325 H580", "dhw", "san", true)}
   <g class="comp" data-c="scale" tabindex="0" role="button" aria-label="Kalkvanger">
     <rect class="hit" x="540" y="356" width="34" height="34"/>
     <rect class="shape" x="559" y="362" width="14" height="24" rx="3"/>
@@ -625,7 +626,7 @@ function schemaSvg(floors, curve) {
     <text class="val sm" id="v-target" x="660" y="320" text-anchor="middle"></text>
     ${nb(650, 650, 15)}
   </g>
-  ${pipe("M580,325 H598 V506 a8,8 0 0 0 8,8", "dhw", "dhw", true)}
+  ${pipe("M580,325 H598 V506 a8,8 0 0 0 8,8", "dhw", "san", true)}
   <g class="comp" data-c="imm" tabindex="0" role="button" aria-label="Dompelaar, niet ingebouwd">
     <rect class="ghost" id="imm-shape" x="606" y="590" width="88" height="12" rx="3"/>
     <text class="t s" x="650" y="618" text-anchor="middle">dompelaar n.v.t.</text>
@@ -658,7 +659,7 @@ function schemaSvg(floors, curve) {
   <g class="comp" data-c="absent" tabindex="0" role="button" aria-label="Niet in jouw installatie">
     <rect class="hit" x="24" y="756" width="274" height="40"/>
     <text class="t b" x="32" y="774" style="fill:var(--muted)">Niet in jouw installatie</text>
-    <text class="t s" x="32" y="790">koeling · zone 2 · BH2 · pomp 3 en 4</text>
+    <text class="t s" x="32" y="790">koeling · zone 2 · BH2 · pomp 3</text>
   </g>
 
   <rect class="zone" x="16" y="820" width="574" height="184" rx="8"/>
@@ -725,7 +726,7 @@ const C = {
   ds18: { name: "1-wire-voeler (DS18B20) op de warmwaterleiding", where: "Idee: op de uitgaande warmwaterleiding van het vat", text: "De Asgard heeft een 1-wire-aansluiting voor maximaal zes DS18B20-voelers. Een voeler op de warmwaterleiding warmt binnen seconden op zodra er getapt wordt. Zo is tappen direct en betrouwbaar te zien, ook zonder dat het vat al merkbaar afkoelt." },
   asgOut: { name: "Servicewaarden buitenunit en pomp (Asgard)", where: "Buitenunit en pomp 1", text: "De Asgard vraagt bij de FTC6 ook servicewaarden van de buitenunit op: persgastemperatuur (TH4), zuiggas, verdamping, ventilatortoerental, oververhitting, onderkoeling, compressorstarts en draaiuren, plus de stand en het verbruik van pomp 1. Die servicecodes werken niet op alle SUZ-buitenunits; blijft een waarde leeg, dan geeft jouw buitenunit hem niet door." },
   hex16: { name: "Platenwisselaar water-water (16)", where: "In de cilinderunit, naast het vat", text: "Het vat heeft geen spiraal. Staat de 3-wegklep (5) op tapwater, dan stroomt het verwarmingswater door de linkerhelft van deze tweede platenwisselaar en via de debietmeter (11) terug naar de warmtepomp. Door de rechterhelft pompt de sanitaire pomp (18) koud water van onderin het vat; dat gaat opgewarmd via de kalkvanger (17) en pomp 18 terug het vat in en komt vrij net onder THW5B. Het verwarmingswater en het drinkwater raken elkaar niet." },
-  pump18: { name: "Sanitaire pomp (18)", where: "Tussen wisselaar 16 en het vat", text: "Pompt tijdens het opwarmen van tapwater het water van onderin het vat via de kalkvanger (17) en wisselaar 16 terug naar bovenin. Draait alleen in tapwaterstand. De FTC6 meldt deze pomp niet apart; het schema laat hem meedraaien met de tapwaterstand." },
+  pump18: { name: "Sanitaire pomp (18)", where: "Tussen wisselaar 16 en het vat", text: "Pompt tijdens het opwarmen van tapwater het water van onderin het vat via de kalkvanger (17) en wisselaar 16 terug naar bovenin. Draait alleen in tapwaterstand. De FTC6 stuurt hem aan als pomp 4 (Water Pump 4 Status); start het opwarmen van het vat, dan gaan pomp 1 en pomp 4 tegelijk aan. Ontbreekt die entiteit, dan laat het schema hem meedraaien met de tapwaterstand." },
   scale: { name: "Kalkvanger (17)", where: "Sanitair circuit, voor pomp 18", text: "Vangt kalk op die uit het drinkwater neerslaat bij het opwarmen, zodat wisselaar 16 en pomp 18 niet dichtslibben. Hoort bij het jaarlijkse onderhoud." },
   safety: { name: "Expansievat, manometer, ontluchter en overdrukventiel", where: "Aanvoerleiding, bovenin de cilinderunit", text: "Expansievat 10 (12 L, voordruk 1 bar) vangt het uitzetten van het verwarmingswater op. Manometer 7 toont de waterdruk. Automatische ontluchter 9 laat lucht ontsnappen en overdrukventiel 8 opent bij 3 bar. Niets hiervan is uit te lezen; de waterdruk lees je af op de manometer." },
   dhwsafe: { name: "Overdrukventiel tapwater (21) en terugslagklep (33)", where: "Tapwateraansluitingen", text: "Overdrukventiel 21 beschermt het vat en opent bij 10 bar. Terugslagklep 33 (lokaal geplaatst) voorkomt dat tapwater terugstroomt in de waterleiding." },
@@ -740,7 +741,7 @@ const C = {
   unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een mengklep met eigen zonevoelers, een mengvat met extra zonepomp en een dompelaar. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat de Asgard ze altijd aanmaakt. Voelers zonder sensor geven een vaste 25,0 °C." },
   curve: { name: "Stooklijn (compensatiecurve)", where: "Instelling in de FTC6", text: "Met de regeling op Heat Compensation Curve bepaalt de FTC6 de aanvoertemperatuur uit de buitentemperatuur (TH7): hoe kouder buiten, hoe warmer het water naar de vloeren. Tot en met het koude punt geldt de hoogste aanvoer, vanaf het warme punt de laagste, en daartussen loopt de lijn recht (via het aanpassingspunt als dat is ingesteld). De groene stip is de huidige buitentemperatuur op de lijn: de aanvoer waar de FTC6 volgens de ingestelde punten op mikt. De Asgard meldt ook het aanvoerdoel dat de FTC6 zelf berekent (Zone 1 Setpoint Value); dat staat erbij en hoort gelijk te zijn aan de lijn. De rode stip is de werkelijke aanvoer (THW1) zodra de vloerverwarming draait. De punten zelf geeft de FTC6 niet door; ze komen uit Configureren. Pas ze daar aan als je de stooklijn op het Ecodan-display verandert." },
   zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. De Asgard meldt het aanvoerdoel van die zone (Zone 1 Setpoint Value) en de kamertemperatuur zoals de FTC6 die kent (Zone 1 Room Temp, van de voeler in het bedieningspaneel in de technische ruimte). Bij regeling op de stooklijn speelt die kamertemperatuur geen rol." },
-  absent: { name: "Niet in jouw installatie", where: "Komen niet voor in jouw installatie", text: "De Asgard-firmware kent ook entiteiten voor koelen, een tweede zone, een tweede booster-trap en pompen 3 en 4. Jouw installatie heeft die onderdelen niet; als ze in Home Assistant staan, kun je ze uitschakelen." },
+  absent: { name: "Niet in jouw installatie", where: "Komen niet voor in jouw installatie", text: "De Asgard-firmware kent ook entiteiten voor koelen, een tweede zone, een tweede booster-trap en pomp 3 (zone 2). Jouw installatie heeft die onderdelen niet; als ze in Home Assistant staan, kun je ze uitschakelen." },
   meterOut: { name: "kWh-meter buitenunit", where: "Meterkast", text: "Meet het werkelijke stroomverbruik van de groep naar de buitenunit: compressor en ventilator. Bij de gebruikelijke Ecodan-bedrading krijgt de cilinderunit zijn regelstroom (FTC6, wifi, pomp 1, 3-wegklep) via de buitenunit, dus dan telt dat verbruik hier mee. Dit is de meting om op te vertrouwen; de 'consumed'-waarden van de Asgard zijn schattingen van de FTC6. Boven 30 W lopen er gele bolletjes over de stroomkabel." },
   meterIn: { name: "kWh-meter binnenunit", where: "Meterkast", text: "Meet de aparte groep naar de cilinderunit. Die voedt vooral de 2 kW booster heater (BH1). Die gaat aan bij de legionella-run: de warmtepomp brengt het vat naar ±50–55 °C en de booster heater duwt het laatste stuk naar 60 °C. Ook als back-up bij strenge vorst kan hij bijspringen. Op vol vermogen zie je hier ongeveer 2000 W." },
 };
@@ -791,6 +792,9 @@ const G = [
     { k: "pump_speed", n: "Pump Speed", c: "pump1", x: "Stand van pomp 1 volgens de FTC6." },
     { k: "pump_w", n: "Pump Consumption", c: "pump1", x: "Opgenomen vermogen van pomp 1 volgens de pomp zelf." },
     { k: "pump_fb", n: "Pump Feedback Status", c: "pump1", x: "Terugmelding van pomp 1 aan de FTC6: Active, Warning of een storing." },
+    { k: "pump4", n: "Water Pump 4 Status", c: "pump18", der: X => X.pump4 ?? (X.op == null && X.klep == null ? null : X.san), derSrc: "de tapwaterstand",
+      x: "Uitgang pomp 4 van de FTC6. Bij de EHST20D is dat de sanitaire pomp 18: hij pompt tijdens het opwarmen van het vat het tapwater door platenwisselaar 16.",
+      now: X => X.san ? "Aan: het vat wordt opgewarmd via wisselaar 16." : "Uit." },
     { k: "klep", n: "3-way Valve", c: "valve", der: X => X.opk == null ? null : X.dhw, derSrc: "Operation Mode", now: X => X.dhw ? "Klep staat op tapwater: het water gaat door platenwisselaar 16 naast het vat." : "Klep staat op ruimteverwarming (vloeren)." },
     { k: "bh1", n: "Booster Heater", c: "bh1", der: X => X.bh1, derSrc: "Heat Source", now: X => !X.bh1 ? "Uit: geen elektrische bijverwarming."
       : X.dhw ? "Aan tijdens tapwater: waarschijnlijk de legionella-run (vat naar ±60 °C)."
@@ -870,7 +874,7 @@ const G = [
     { k: "dis-cool", dis: 1, n: "Cool Consumed / Delivered / COP", c: "absent", x: "Stroomverbruik en geleverde koeling per dag.", now: () => "Niet van toepassing. De EHST20D verwarmt alleen (de H in EHST)." },
     { k: "dis-z2", dis: 1, n: "Zone 2", c: "absent", x: "Aanvoer, retour, doel en kamertemperatuur van een tweede zone.", now: () => "Niet aanwezig: de hele vloerverwarming is één zone." },
     { k: "dis-bh2", dis: 1, n: "Booster Heater 2", c: "absent", x: "Tweede trap van de booster heater, op grotere modellen.", now: () => "Bestaat niet bij jou: de VM2D heeft één trap van 2 kW." },
-    { k: "dis-pump34", dis: 1, n: "Water Pump 3 en 4", c: "absent", x: "Pomp voor zone 2 en een tapwaterpomp voor een los vat.", now: () => "Niet aanwezig: één zone en een ingebouwd vat." },
+    { k: "dis-pump3", dis: 1, n: "Water Pump 3", c: "absent", x: "Pomp voor zone 2.", now: () => "Niet aanwezig: de hele vloerverwarming is één zone." },
   ]},
 ];
 // soort bedrijf uit de tekst van Operation Mode (de Engelse labels van de Asgard-firmware)
@@ -1008,7 +1012,7 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .hexwall{stroke:var(--muted);stroke-width:1.4;stroke-dasharray:3 2;fill:none}
 .nb circle{fill:var(--surface);stroke:var(--muted);stroke-width:.8;opacity:.9}
 .nb text{font-family:var(--f-mono);font-size:7.2px;fill:var(--muted);text-anchor:middle;pointer-events:none}
-svg.run-dhw .pump18{stroke:var(--accent);stroke-width:2.4}
+svg.run-san .pump18{stroke:var(--accent);stroke-width:2.4}
 .asg{font-family:var(--f-mono);font-size:11px;font-weight:500;fill:var(--asg);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
 .asg.sm{font-size:9.5px}
 .sensor.asgs{stroke:var(--asg);stroke-width:1.6}
@@ -1029,9 +1033,9 @@ svg.run-tap .tapfix{stroke:var(--dhw);stroke-width:2.2} svg.run-tap .drops{strok
 @keyframes flow{to{stroke-dashoffset:-14.1}}
 .fl.thin{animation-name:flowt} @keyframes flowt{to{stroke-dashoffset:-11.1}}
 svg.run-refr .f-refr{display:inline;--sp:var(--sp-refr)}
-svg.run-prim .f-prim, svg.run-heat .f-heat, svg.run-dhw .f-dhw, svg.run-tap .f-tap{display:inline}
+svg.run-prim .f-prim, svg.run-heat .f-heat, svg.run-dhw .f-dhw, svg.run-san .f-san, svg.run-tap .f-tap{display:inline}
 svg.run-eout .f-eout{display:inline;--sp:var(--sp-eout)} svg.run-ein .f-ein{display:inline;--sp:var(--sp-ein)}
-svg.mode-heat .b-dhw, svg.mode-dhw .b-heat{opacity:.3}
+svg.mode-heat .b-dhw, svg.mode-heat .b-san, svg.mode-dhw .b-heat{opacity:.3}
 svg.run-vraag .s-vraag{stroke:var(--hot);animation:sig 1s linear infinite} @keyframes sig{to{stroke-dashoffset:-18}}
 .fan{transform-box:fill-box;transform-origin:center}
 svg.run-fan .fan{animation:spin var(--sp-fan,1.4s) linear infinite} @keyframes spin{to{transform:rotate(360deg)}}
@@ -1292,7 +1296,7 @@ function mountDashboard(host, root) {
     const X = {};
     for (const k of ["buiten", "freq", "cond", "th2", "aanvoer", "retour", "flow", "pump_speed", "tank", "tank2", "dhw_drop", "leg_temp",
                      "dhw_prod", "dhw_cons", "dhw_cop", "heat_prod", "heat_cons", "heat_cop", "wifi", "mixing", "z1_feed", "z1_return"]) X[k] = num(R[k]);
-    for (const k of ["pump1", "klep", "bh1", "imm", "pump2", "defrost"]) X[k] = bin(R[k]);
+    for (const k of ["pump1", "klep", "bh1", "imm", "pump2", "pump4", "defrost"]) X[k] = bin(R[k]);
     X.compBin = bin(R.comp);
     X.op = txt(R.opstate); X.opk = opKind(X.op); X.src = txt(R.heatsrc);
     X.fault = txt(R.fault); X.faultOn = X.fault != null && !/^(no error|no fault|normal|0+)$/i.test(X.fault.trim());
@@ -1302,6 +1306,8 @@ function mountDashboard(host, root) {
     if (X.bh1 == null && X.src != null) X.bh1 = /booster/i.test(X.src);
     if (X.imm == null && X.src != null) X.imm = /immersion/i.test(X.src);
     X.dhw = X.klep != null ? (cfg.klep_aan_is_tapwater ? X.klep : !X.klep) : X.opk === "dhw" || X.opk === "leg";
+    // sanitaire pomp 18 = uitgang pomp 4 van de FTC6; zonder die entiteit: draait mee met tapwater opwarmen
+    X.san = X.pump4 != null ? X.pump4 : !!X.pump1 && X.dhw;
     X.dT = X.aanvoer != null && X.retour != null ? X.aanvoer - X.retour : null;
     X.target = num(R.dhw_sp);
     X.whMode = txt(R.dhw_mode);
@@ -1415,7 +1421,7 @@ function mountDashboard(host, root) {
     // schema: stromen
     const run = {
       "run-refr": X.compRun, "run-fan": X.compRun, "run-pump1": !!X.pump1,
-      "run-prim": !!X.pump1, "run-heat": !!X.pump1 && !X.dhw, "run-dhw": !!X.pump1 && X.dhw,
+      "run-prim": !!X.pump1, "run-heat": !!X.pump1 && !X.dhw, "run-dhw": !!X.pump1 && X.dhw, "run-san": X.san,
       "mode-heat": !!X.pump1 && !X.dhw, "mode-dhw": !!X.pump1 && X.dhw,
       "run-eout": X.pOut > P_IDLE, "run-ein": X.pIn > P_IDLE, "run-bh1": !!X.bh1, "imm-on": !!X.imm,
       "run-tap": !!X.hotDraw, "run-vraag": !!X.vraag,
