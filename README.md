@@ -2,8 +2,9 @@
 
 Een zijbalk-panel voor Home Assistant met het installatieschema van een Mitsubishi Electric
 Ecodan-warmtepomp (split-systeem SUZ-SWM60 VA met cilinderunit EHST20D-VM2D en vloerverwarming).
-De waarden in het schema zijn live: ze komen uit de **MELCloud**-integratie en uit de
-kWh-meters in de meterkast die je al in HA hebt.
+De waarden in het schema zijn live: ze komen van de **Asgard** (een ESP32-S3 met
+[esphome-ecodan-hp](https://github.com/gekkekoe/esphome-ecodan-hp) op de CN105-aansluiting van de
+FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al in HA hebt.
 
 - **Installatieschema:** buitenunit in de tuin, cilinderunit in de technische ruimte
   (platenwisselaar, booster heater, pomp 1, 3-wegklep, tapwatervat met spiraal), de verdelers en
@@ -12,10 +13,9 @@ kWh-meters in de meterkast die je al in HA hebt.
   - Koudemiddel (paars) zodra de compressor draait; sneller bij een hoger toerental. De
     ventilator in de buitenunit draait mee en bij de compressor staat de frequentie. In de
     compressor loopt een sinusgolf: meer golven en sneller bij een hogere frequentie, een vlakke
-    lijn als hij stilstaat. MELCloud geeft
-    de frequentie pas na een paar minuten door. Meet de kWh-meter van de buitenunit al meer dan
-    150 W, dan draaien ventilator en koudemiddel meteen mee en staat er *draait* tot de frequentie
-    binnenkomt.
+    lijn als hij stilstaat. Meet de kWh-meter van de buitenunit meer dan 150 W terwijl de
+    frequentie (nog) 0 is, dan draaien ventilator en koudemiddel toch mee en staat er *draait*.
+    Ontdooit de buitenunit (*Defrost*), dan staat dat onder de ventilator.
   - Verwarmingswater zodra pomp 1 draait. De 3-wegklep bepaalt de route: naar de verdelers
     en vloerlussen (verwarming) óf door de spiraal in het vat (tapwater). De tak die niet in
     gebruik is wordt gedimd en de actieve klepuitgang kleurt rood.
@@ -25,8 +25,8 @@ kWh-meters in de meterkast die je al in HA hebt.
     warm water getapt wordt (zie *Tapwater en de watermeter*).
   - De booster heater gloeit als hij aan staat; de kleur in het tapwatervat volgt de
     tanktemperatuur.
-  - Warmtevraag: draait de warmtepomp op ruimteverwarming, dan kleurt het signaal naar de FTC6
-    rood. Het display-icoon en de regelunit van een kamer die warmte vraagt kleuren ook rood.
+  - Warmtevraag: staat ingang IN1 van de FTC6 aan (*In1 Thermostat*), dan kleurt het signaal
+    naar de FTC6 rood. Het display-icoon en de regelunit van een kamer die warmte vraagt kleuren ook rood.
   - Vloerverwarming: er lopen alleen bolletjes door lussen waarvan de kraan open staat (zie
     *Kamers*). Een open aandrijving krijgt een rode rand, een dichte lus
     wordt vaag weergegeven en een verdieping met alle kranen dicht valt helemaal stil.
@@ -37,27 +37,33 @@ kWh-meters in de meterkast die je al in HA hebt.
 - **Kamertemperaturen:** per kamer de temperatuur van de slimme meter naast de (domme)
   thermostaat, in het schema, in de lijst *Kamertemperaturen* en in *Wat gebeurt er nu?*
 - **Waarden bij elk onderdeel:** buitentemperatuur (TH7), compressorfrequentie,
-  condensatietemperatuur, aanvoer (THW1), retour (THW2) met ΔT, tanktemperatuur (THW5) met doel
-  en modus, wifi-signaal, vermogen en verbruik van vandaag per kWh-meter, en de
-  kamertemperaturen.
-- **Kerncijfers bovenaan:** buiten, compressor, aanvoer/retour, tapwater, vermogen nu, warmte
-  vandaag en de COP voor vloer en tapwater uit `sensor.technische_ruimte_ecodan_verwarming_cop` en
-  `sensor.technische_ruimte_ecodan_sww_cop` (een COP van 0 betekent: te weinig gedraaid en staat als –).
-  Daaronder, als de periodes kloppen, de **totale COP van vandaag met gemeten stroom**: warmte volgens MELCloud ÷ wat de
+  condensatietemperatuur, aanvoer (THW1), retour (THW2) met ΔT, debiet (L/min), de tankvoelers
+  THW5A (boven) en THW5B (onder) met doel en DHW-modus, wifi-signaal van de Asgard, vermogen en
+  verbruik van vandaag per kWh-meter, en de kamertemperaturen.
+- **Kerncijfers bovenaan:** buiten met de regeling en het aanvoerdoel van de FTC6, compressor,
+  aanvoer/retour, tapwater, vermogen nu, **warmte nu** (Estimated Output Power) met de COP van dit
+  moment met gemeten stroom, warmte vandaag en de COP voor vloer en tapwater uit
+  `sensor.technische_ruimte_ecodan_heating_cop` en `sensor.technische_ruimte_ecodan_dhw_cop` (een COP
+  van 0 betekent: te weinig gedraaid en staat als –).
+  Daaronder, als de periodes kloppen, de **totale COP van vandaag met gemeten stroom**: warmte volgens de FTC6 ÷ wat de
   kWh-meters vandaag gemeten hebben. Je hebt daar geen Riemann- of utility-meter-helpers voor nodig.
-  MELCloud werkt de dagtotalen met vertraging bij. Is geen van die dagtotalen sinds middernacht
-  veranderd, dan horen ze bij een eerdere dag. Het panel toont ze dan als *MELCloud-dag* met de
+  De FTC6 werkt de dagtotalen met vertraging bij. Is geen van die dagtotalen sinds middernacht
+  veranderd, dan horen ze bij een eerdere dag. Het panel toont ze dan als *vorige dag* met de
   datum en rekent geen gemeten COP uit, omdat de periodes niet overeenkomen.
+- **Servicewaarden van de buitenunit** in de entiteitenlijst: persgas, oververhitting, onderkoeling,
+  zuiggas, verdamping, ventilatortoerental, compressorstarts en draaiuren. Op sommige buitenunits
+  blijven die leeg.
 - **Uitleg per onderdeel en entiteit:** klik op een onderdeel in het schema of op een
   entiteit in de lijst. De detailkaart legt uit wat het onderdeel doet en wat de huidige waarde
   betekent, met een knop naar de geschiedenis van de entiteit.
 - **Wat gebeurt er nu?** Een samenvatting in gewone taal: rust, verwarming of tapwater, de stand
   van het vat ten opzichte van het doel, COP per functie en gemeten tegen geschat verbruik.
-- **Meldingen in het panel:** als *Operation mode* niet op *Curve* (stooklijn) staat, als de
-  booster heater aangaat tijdens ruimteverwarming (de legionella-run wordt apart als info
-  getoond), als de dompelaar aan meldt, als MELCloud onbereikbaar is of al lang geen nieuwe
+- **Meldingen in het panel:** als de regeling (*Selected operating mode*) niet op *Heat
+  Compensation Curve* (stooklijn) staat, als de booster heater aangaat tijdens ruimteverwarming (de
+  legionella-run wordt apart als info getoond), als de dompelaar aan meldt, bij een storingscode
+  (*Fault code*) of een koudemiddelfout, en als de Asgard onbereikbaar is of al lang geen nieuwe
   waarden stuurt.
-- **Alleen lezen:** het panel bedient niets. Operation mode en tapwater wijzig je dus niet
+- **Alleen lezen:** het panel bedient niets. De regeling en het tapwater wijzig je dus niet
   per ongeluk vanaf het dashboard.
 - **Licht en donker thema.** Beide thema's hebben dezelfde matte opbouw, lettertypes en maten. Het
   schema heeft diepte: zwevende panelen met schaduw, onderdelen met reliëf, leidingen als buizen, het
@@ -71,8 +77,10 @@ kWh-meters in de meterkast die je al in HA hebt.
 
 - Home Assistant **2024.6** of nieuwer.
 - [HACS](https://hacs.xyz/docs/use/) is geïnstalleerd (alleen nodig voor installatie via HACS).
-- De **MELCloud**-integratie is ingesteld met je Ecodan. Het panel leest de entiteiten van de
-  apparaten *Ecodan* (unit + tapwater) en *Ecodan Huis* (zone 1).
+- Een **Asgard** (of een andere ESP met [esphome-ecodan-hp](https://github.com/gekkekoe/esphome-ecodan-hp))
+  op de FTC6, toegevoegd via de **ESPHome**-integratie met de Engelse labels. Het panel leest de
+  entiteiten van dat apparaat; met de apparaatnaam *Technische ruimte Ecodan* heten ze
+  `sensor.technische_ruimte_ecodan_…`.
 - Optioneel: kWh-meters voor de groepen van de buiten- en binnenunit (bijv. HomeWizard
   kWh-meters). Zonder meters werkt alles behalve de gemeten stroom en de gemeten COP.
 - Optioneel: een temperatuursensor of climate-entiteit per kamer. Standaard gebruikt het panel de
@@ -137,7 +145,7 @@ Via **Ecodan Dashboard → Configureren** stel je het volgende in:
 | Naam, icoon, URL-pad | Hoe en waar het panel in de zijbalk staat (standaard `/ecodan`) |
 | Alleen beheerders | Verbergt het panel voor gewone gebruikers |
 | Thema | `Licht`, `Donker` of `Volg Home Assistant`. De zon/maan-knop in het panel overschrijft dit per apparaat |
-| Entiteit-voorvoegsel | Standaard `technische_ruimte_ecodan`, dus bijv. `sensor.technische_ruimte_ecodan_tanktemperatuur` |
+| Entiteit-voorvoegsel | Standaard `technische_ruimte_ecodan`, dus bijv. `sensor.technische_ruimte_ecodan_dhw_current_temp` |
 | 3-wegklep: aan = tapwater | Zet uit als het schema verwarming toont terwijl het vat wordt opgewarmd |
 | Thermostaat Woonkamer, Slaapkamer 1 t/m 4 | Ingestelde temperatuur op het Möhlenhoff-display in die kamer (standaard 20 °C) |
 | Stooklijn | Koude punt, warme punt, optioneel aanpassingspunt en verschuiving, zoals op het Ecodan-display (zie *Stooklijn*) |
@@ -145,8 +153,9 @@ Via **Ecodan Dashboard → Configureren** stel je het volgende in:
 
 ### Stooklijn
 
-MELCloud geeft de stooklijn (compensatiecurve) niet door. Daarom neem je de punten over van het
-Ecodan-display (**Verwarming → Compensatiecurve**) in **Configureren**:
+De FTC6 geeft de punten van de stooklijn (compensatiecurve) niet door, alleen het aanvoerdoel dat
+eruit volgt (*Zone 1 Setpoint Value*). Daarom neem je de punten over van het Ecodan-display
+(**Verwarming → Compensatiecurve**) in **Configureren**:
 
 | Optie | Standaard | Betekenis |
 |---|---|---|
@@ -158,21 +167,27 @@ Ecodan-display (**Verwarming → Compensatiecurve**) in **Configureren**:
 Tussen de punten loopt de lijn recht, net als op het display. In het schema staat de zone
 **STOOKLIJN** naast de meterkast:
 - de lijn zelf, met de ingestelde punten;
-- een groene stip bij de huidige buitentemperatuur: de aanvoer waar de FTC6 nu op mikt;
+- een groene stip bij de huidige buitentemperatuur: de aanvoer volgens de ingestelde punten, met
+  daarnaast het aanvoerdoel dat de FTC6 zelf meldt (die twee horen gelijk te zijn);
 - een rode stip met de werkelijke aanvoer (THW1) zodra de vloerverwarming draait, met het verschil
   ten opzichte van de lijn.
 - waarden om de 5 °C op beide assen en kleine streepjes om de 2 °C;
 - een draadkruis: wijs met de muis of tik in de grafiek, dan staan de buitentemperatuur (in hele
   graden, zoals op het display) en de aanvoer op de lijn in een vakje op beide assen.
 
-Pas je de stooklijn op het display aan, pas dan ook deze opties aan. Staat Operation mode niet op
-Curve, dan is de lijn grijs.
+Pas je de stooklijn op het display aan, pas dan ook deze opties aan. Staat de regeling niet op
+*Heat Compensation Curve*, dan is de lijn grijs.
 
 ### Automatische detectie
 
 Per waarde zoekt het panel eerst `<domein>.<voorvoegsel>_<naam>`, bijvoorbeeld
-`sensor.technische_ruimte_ecodan_heat_pump_frequency`, en anders een entiteit met dezelfde naam
-en `ecodan` in de entity-id. De kWh-meters worden gevonden als
+`sensor.technische_ruimte_ecodan_compressor_frequency`, en anders een entiteit met dezelfde naam
+en `ecodan` in de entity-id. De namen zijn die van de Asgard-firmware met Engelse labels.
+
+Ontbreken de binaire sensoren voor pomp 1, de 3-wegklep of de booster heater, dan leidt het panel
+de stand af: pomp 1 uit het debiet (*Flow Rate*), de klep uit de bedrijfsmodus (*Operation Mode*:
+*Heating Water* of *Legionella Prevention* is tapwater) en de booster heater uit *Heat Source*. In
+de entiteitenlijst staat dan *afgeleid*. De kWh-meters worden gevonden als
 `sensor.meterkast_kwh_meter_ecodan_buitenunit_vermogen` en `..._binnenunit_vermogen`, of een
 sensor met `ecodan`, `buitenunit`/`binnenunit` en `vermogen`/`power` in de naam. Bij elke meter
 wordt de totaalteller (`..._energie_import`) gezocht. Het verbruik van vandaag is de teller nu
@@ -225,21 +240,45 @@ lussen.
 
 ### Overrides
 
-Sleutels voor losse entiteiten: `buiten`, `freq`, `cond`, `aanvoer`, `retour`, `pump1`, `klep`,
-`bh1`, `tank`, `imm`, `water_heater`, `opmode`, `dhw_prod`, `dhw_cons`, `dhw_cop`, `heat_prod`,
-`heat_cons`, `heat_cop`, `e_prod`, `demand`, `wifi`, `boiler`, `boiler_flow`, `boiler_ret`,
-`mixing`, `pump2`, `p_out`, `p_in`, `e_out` en `e_in`. Daarnaast:
+Sleutels voor losse entiteiten (met de Asgard-naam waarop het panel zoekt):
+
+| Sleutel | Asgard-entiteit | Sleutel | Asgard-entiteit |
+|---|---|---|---|
+| `buiten` | `outside_temp` | `tank` | `dhw_current_temp` (THW5B) |
+| `freq` | `compressor_frequency` | `tank2` | `dhw_secondary_temp` (THW5A) |
+| `comp` | binary `compressor` | `dhw_sp` | `dhw_setpoint_value` |
+| `defrost` | binary `defrost` | `dhw_drop` | `dhw_max_temp_drop` |
+| `cond` | `refrigerant_condensing_temp` | `dhw_mode` | select `dhw_mode` |
+| `th2` | `refrigerant_liquid_temp` | `leg_temp` | `legionella_prevention_temp` |
+| `aanvoer` | `feed_temp` | `opstate` | `operation_mode` |
+| `retour` | `return_temp` | `opmode` | select `selected_operating_mode` |
+| `delta_t` | `delta_t` | `z1_sp` | `zone_1_setpoint_value` |
+| `flow` | `flow_rate` | `z1_room` | `zone_1_room_temp` |
+| `pump1` | binary `water_pump_status` | `p_est` / `p_heat` | `estimated_output_power` / `output_power` |
+| `pump_speed` | `pump_speed` | `cop_est` | `estimated_cop` |
+| `pump_w` | `pump_consumption` | `heat_prod` / `heat_cons` / `heat_cop` | `heating_delivered` / `heating_consumed` / `heating_cop` |
+| `pump_fb` | `pump_feedback_status` | `dhw_prod` / `dhw_cons` / `dhw_cop` | `dhw_delivered` / `dhw_consumed` / `dhw_cop` |
+| `klep` | binary `3_way_valve` | `day_prod` / `day_cons` | `estimated_total_daily_energy_produced` / `reported_total_daily_energy_consumption` |
+| `bh1` | binary `booster_heater` | `fault` / `ref_err` | `fault_code` / `refrigerant_error_code` |
+| `heatsrc` | `heat_source` | `wifi` / `uptime` | `wifi_signal_db` / `esp_uptime` |
+| `imm` | binary `immersion_heater` | `esp_temp` / `esp_version` | `esp_internal_temperature` / `esp_version` |
+| `pump2` | binary `water_pump_2_status` | `mixing` | `mixing_tank_temp` |
+| `z1_feed` / `z1_return` | `z1_feed_temp` / `z1_return_temp` | `mix_step` | `mixing_valve_step_z1` |
+
+De servicewaarden van de buitenunit: `discharge`, `superheat`, `subcool`, `ou_liquid`, `ou_2phase`,
+`ou_suction`, `ou_heatsink`, `ou_surface`, `fan`, `starts` en `runtime`. De kWh-meters: `p_out`,
+`p_in`, `e_out` en `e_in`. Daarnaast:
 
 | Sleutel | Uitleg |
 |---|---|
 | `verdiepingen` | Indeling van de woning (max. 3 verdiepingen, max. 4 kamers per verdieping), van boven naar beneden. Een kamer is een naam of `{naam, entity}` met een temperatuursensor of climate-entiteit; met `entity: false` zoekt het panel niets. Per verdieping beschrijft `lussen` de verdeler (zie *Verdelers en aandrijvingen*) |
-| `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Zonder deze sleutel geldt: warmtevraag = een climate-entiteit met `hvac_action: heating`, of anders: de warmtepomp draait op ruimteverwarming |
+| `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Standaard *In1 Thermostat* van de Asgard. Zonder die entiteit geldt: warmtevraag = een climate-entiteit met `hvac_action: heating`, of anders: de warmtepomp draait op ruimteverwarming |
 | `tapwater_debiet` | Sensor voor de actuele waterdoorstroming. Standaard `sensor.meterkast_watermeter_water_gebruik` (zie *Tapwater en de watermeter*) |
 
 Een voorbeeld:
 
 ```yaml
-water_heater: water_heater.ecodan
+pump1: binary_sensor.technische_ruimte_ecodan_water_pump_status
 verdiepingen:
   - naam: 2e verdieping
     hoofdactuator: true
@@ -269,13 +308,12 @@ De Ecodan neemt zelf geen water uit de waterleiding: het verwarmingscircuit is g
 krijgt alleen koud leidingwater binnen als er ergens warm water getapt wordt. De watermeter
 (`sensor.meterkast_watermeter_water_gebruik`) meet al het water in huis, dus ook toilet en koude
 kranen. Daarom toont het schema de stroming door het vat alleen als er water stroomt **én** het
-vat (THW5) in de laatste 15 minuten minstens 1 °C is afgekoeld. Stroomt er water zonder dat het vat
+vat onderin (THW5B) in de laatste 15 minuten minstens 0,5 °C is afgekoeld. Stroomt er water zonder dat het vat
 afkoelt, dan staat bij de koudwaterleiding *niet via het vat*.
 
 Beperkingen:
-- MELCloud geeft de tanktemperatuur met een paar minuten vertraging door, in stappen van 0,5 °C. De
-  stroming verschijnt dus pas als het afkoelen gemeld is, en korte tapbeurten (handen wassen) zie
-  je niet.
+- De stroming verschijnt pas als het afkoelen gemeld is; korte tapbeurten (handen wassen) zie je
+  niet.
 - Tot 15 minuten na een douchebeurt wordt ook een toiletspoeling als *via het vat* getoond.
 
 ## Hoe het werkt
@@ -287,9 +325,8 @@ als een van de gebruikte entiteiten verandert. De stand van de energietellers om
 via de websocket-API uit `history/history_during_period`, met terugval op
 `recorder/statistics_during_period`.
 
-MELCloud stuurt de waarden met een paar minuten vertraging door; de kWh-meters zijn vrijwel direct.
-Het schema kan daardoor even een draaiende compressor tonen terwijl de meter al stand-by meet, of
-andersom.
+De Asgard leest de waarden rechtstreeks uit de FTC6 en geeft ze binnen enkele seconden door, net als
+de kWh-meters. Alleen de dagtotalen van energie en COP werkt de FTC6 met vertraging bij.
 
 ## Ontwikkeling
 

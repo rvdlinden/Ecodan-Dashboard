@@ -12,7 +12,7 @@ CONF_THEME = "thema"
 CONF_PREFIX = "prefix"
 CONF_VALVE_DHW = "klep_aan_is_tapwater"
 CONF_OVERRIDES = "overrides"
-# Stooklijn zoals ingesteld op het Ecodan-display (de waarden zijn niet uit MELCloud op te halen).
+# Stooklijn zoals ingesteld op het Ecodan-display (de FTC6 geeft de punten niet door).
 CONF_CURVE_OUT_COLD = "stooklijn_buiten_koud"      # buitentemperatuur van het koude punt
 CONF_CURVE_FLOW_COLD = "stooklijn_aanvoer_koud"    # aanvoertemperatuur bij het koude punt (en kouder)
 CONF_CURVE_OUT_WARM = "stooklijn_buiten_warm"      # buitentemperatuur van het warme punt
