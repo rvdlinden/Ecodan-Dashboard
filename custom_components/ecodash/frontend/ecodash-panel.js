@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.9.0";
+const ECODASH_VERSION = "1.10.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -76,6 +76,7 @@ const ENT = {
   z1_return:   { d: "sensor", s: ["z1_return_temp"] },
   mix_step:    { d: "sensor", s: ["mixing_valve_step_z1"] },
   imm:         { d: "binary_sensor", s: ["immersion_heater"] },
+  holiday:     { d: "binary_sensor", s: ["holiday_mode"] },
   pump2:       { d: "binary_sensor", s: ["water_pump_2_status"] },
 };
 // Met deze entiteiten bepaalt het panel of de Asgard bereikbaar is en hoe recent de waarden zijn.
@@ -270,6 +271,7 @@ function curveSvg(curve) {
 // De tekenrichting van elk pad is de stroomrichting.
 const pipe = (d, col, g, thin = false) =>
   `<path class="pipe ${col} b-${g}${thin ? " thin" : ""}" d="${d}"/><path class="fl f-${g}${thin ? " thin" : ""}" d="${d}"/>`;
+const nb = (x, y, n) => `<g class="nb"><circle cx="${x}" cy="${y}" r="6.2"/><text x="${x}" y="${y + 2.6}">${n}</text></g>`;
 const pwr = (d, g) => `<path class="pwr" d="${d}"/><path class="fl f-${g} thin" d="${d}"/>`;
 
 function floorsSvg(floors) {
@@ -368,9 +370,13 @@ function schemaSvg(floors, curve) {
       <stop offset="0" stop-color="#000" stop-opacity=".4"/><stop offset=".22" stop-color="#fff" stop-opacity=".08"/>
       <stop offset=".34" stop-color="#fff" stop-opacity=".12"/><stop offset=".6" stop-color="#000" stop-opacity=".04"/>
       <stop offset="1" stop-color="#000" stop-opacity=".42"/></linearGradient>
-    <!-- spiraal: warm (aanvoer) bovenin, afgekoeld (retour) bij de uitgang rechtsonder -->
-    <linearGradient id="coilGrad" gradientUnits="userSpaceOnUse" x1="0" y1="420" x2="0" y2="650">
+    <!-- platenwisselaars: water warmt op in 3 (onder retour, boven aanvoer); in 16 koelt het primaire water af en warmt het tapwater op -->
+    <linearGradient id="hex3W" gradientUnits="userSpaceOnUse" x1="0" y1="720" x2="0" y2="600">
+      <stop offset="0" style="stop-color:var(--ret)"/><stop offset="1" style="stop-color:var(--hot)"/></linearGradient>
+    <linearGradient id="hex16P" gradientUnits="userSpaceOnUse" x1="0" y1="412" x2="0" y2="470">
       <stop offset="0" style="stop-color:var(--hot)"/><stop offset="1" style="stop-color:var(--ret)"/></linearGradient>
+    <linearGradient id="hex16S" gradientUnits="userSpaceOnUse" x1="0" y1="470" x2="0" y2="412">
+      <stop offset="0" style="stop-color:var(--cold)"/><stop offset="1" style="stop-color:var(--dhw)"/></linearGradient>
     <!-- vat: gelaagd, koud leidingwater onderin en warm tapwater bovenin -->
     <linearGradient id="tankGrad" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" style="stop-color:var(--hot)"/><stop offset=".55" style="stop-color:var(--dhw);stop-opacity:.55"/>
@@ -387,41 +393,62 @@ function schemaSvg(floors, curve) {
   <text class="zlabel" x="808" y="42">WONING</text>
 
   <g class="comp" data-c="cyl" tabindex="0" role="button" aria-label="Cilinderunit EHST20D-VM2D">
-    <rect class="ghost" x="340" y="60" width="420" height="730" rx="14" style="stroke:var(--muted)"/>
+    <rect class="ghost" x="340" y="60" width="420" height="736" rx="14" style="stroke:var(--muted)"/>
     <text class="t h" x="356" y="84">EHST20D-VM2D</text>
-    <text class="t s" x="356" y="100">cilinderunit (binnen)</text>
+    <text class="t s" x="356" y="100">cilinderunit (binnen) · Figure 8.2</text>
   </g>
 
+  <!-- koudemiddel: heet gas van de buitenunit naar platenwisselaar 3, vloeistof terug (TH2 = 28, drukvoeler = 29) -->
   <g class="comp" data-c="refr" tabindex="0" role="button" aria-label="Koudemiddelleidingen">
-    <rect class="hit" x="276" y="150" width="108" height="110"/>
-    ${pipe("M280,175 H352 V218 H380", "refr", "refr")}
-    ${pipe("M380,250 H338 V198 H280", "refr", "refr", true)}
+    <rect class="hit" x="276" y="150" width="100" height="600"/>
+    ${pipe("M280,175 H352 V600 H372", "refr", "refr")}
+    ${pipe("M372,720 H338 V198 H280", "refr", "refr", true)}
     <text class="t s" x="286" y="166">R32</text>
   </g>
-  ${pipe("M440,240 H676", "hot", "prim")}
-  ${pipe("M704,240 H804 a8,8 0 0 1 16,0 H834", "hot", "heat")}
-  <!-- stijgleidingen per stuk, zodat een verdieping met alle kranen dicht stil valt (data-ff: verdiepingen erachter) -->
-  <g class="ff" data-ff="0">${pipe("M834,240 V120", "hot", "heat")}</g>
-  <g class="ff" data-ff="1 2">${pipe("M834,240 V350", "hot", "heat")}</g>
-  <g class="ff" data-ff="2">${pipe("M834,350 V580", "hot", "heat")}</g>
-  ${pipe("M690,254 V420", "hot", "dhw")}
-  <g class="ff" data-ff="0">${pipe("M812,230 V330", "ret", "heat")}</g>
-  <g class="ff" data-ff="2">${pipe("M812,690 V460", "ret", "heat")}</g>
-  <g class="ff" data-ff="1 2">${pipe("M812,460 V330", "ret", "heat")}</g>
-  ${pipe("M812,330 H745", "ret", "heat")}
-  ${pipe("M745,330 H698 a8,8 0 0 0 -16,0 H440", "ret", "prim")}
-  ${pipe("M720,650 H745 V330", "ret", "dhw")}
-  ${pipe("M470,456 H352", "dhw", "tap")}
-  <path class="pipe dhw thin" d="M362,450 L352,456 L362,462"/>
-  ${pipe("M352,736 H470", "cold", "tap")}
-  <path class="pipe cold thin" d="M460,730 L470,736 L460,742"/>
-  <text class="t s" x="356" y="446">warm tapwater</text>
-  <text class="t s" x="364" y="474">naar de kranen</text>
-  <text class="t s" x="356" y="726">koud leidingwater</text>
-  <text class="val sm" id="v-tap" x="356" y="754"></text>
-  <text class="val sm" id="v-tap2" x="356" y="767"></text>
+  <g class="comp" data-c="th2" tabindex="0" role="button" aria-label="Koudemiddelvoeler TH2">
+    <rect class="hit" x="340" y="706" width="30" height="58"/>
+    <circle class="sensor" cx="355" cy="720" r="5.5"/>
+    <text class="t s" x="355" y="742" text-anchor="middle">TH2</text>
+    ${nb(355, 756, 28)}
+    <text class="val sm" id="v-th2" x="341" y="772"></text>
+  </g>
+  <g class="comp" data-c="psens" tabindex="0" role="button" aria-label="Drukvoeler">
+    <path class="shape" d="M355,474 v12 l9,-6 z"/>
+    ${nb(374, 480, 29)}
+  </g>
 
-  <path class="sig s-vraag" d="M1182,579 V56 H750 V125 H740"/>
+  <!-- primair circuit: retour via 11-25-12-13-14 naar platenwisselaar 3, aanvoer via booster heater 4 en THW1 (24) naar 3-wegklep 5 -->
+  ${pipe("M412,600 H450 V427", "hot", "prim")}
+  ${pipe("M450,397 V240 H642 a8,8 0 0 1 16,0 H727 a8,8 0 0 1 16,0 H804 a8,8 0 0 1 16,0 H834", "hot", "heat")}
+  ${pipe("M465,412 H516", "hot", "dhw")}
+  ${pipe("M516,470 H502 V708 H620 V750", "ret", "dhw")}
+  ${pipe("M812,330 H750 V750 H620", "ret", "heat")}
+  ${pipe("M620,750 H425 V720 H412", "ret", "prim")}
+  <circle class="fill-ink" cx="620" cy="750" r="3"/>
+  <circle class="fill-ink" cx="450" cy="448" r="3"/>
+
+  <!-- tapwater: koud leidingwater (terugslag 33) onderin het vat, warm tapwater (overdruk 21) bovenuit naar de kranen -->
+  ${pipe("M772,196 H735 V680 H720", "cold", "tap")}
+  <path class="pipe cold thin" d="M768,190 L758,196 L768,202"/>
+  ${pipe("M650,300 V160 H788 V232 a8,8 0 0 1 0,16 V322 a8,8 0 0 1 0,16 V733", "dhw", "tap")}
+  <text class="t s" x="662" y="152">warm tapwater</text>
+  <text class="t s" x="662" y="188">koud leidingwater</text>
+  <g class="comp" data-c="ds18" tabindex="0" role="button" aria-label="DS18B20-voeler op de warmwaterleiding">
+    <rect class="hit" x="700" y="148" width="40" height="24"/>
+    <circle class="sensor asgs" cx="720" cy="160" r="5"/>
+    <text class="asg sm" x="742" y="174" text-anchor="end">1-wire (optie)</text>
+  </g>
+  <text class="val sm" id="v-tap" x="640" y="188" text-anchor="end"></text>
+  <text class="val sm" id="v-tap2" x="640" y="201" text-anchor="end"></text>
+  <g class="comp" data-c="dhwsafe" tabindex="0" role="button" aria-label="Overdrukventiel tapwater en terugslagklep">
+    <rect class="hit" x="620" y="200" width="150" height="30"/>
+    <path class="shape" d="M638,204 l12,7 l-12,7 z M662,204 l-12,7 l12,7 z"/>
+    ${nb(628, 222, 21)}
+    <path class="shape" d="M729,210 h12 l-6,9 z"/>
+    ${nb(754, 214, 33)}
+  </g>
+
+  <path class="sig s-vraag" d="M1182,579 V56 H750 V98 H740"/>
   <text class="t s" x="1170" y="50" text-anchor="end">warmtevraag aan/uit → FTC6</text>
 
   <g class="comp" data-c="outdoor" data-also="meterOut" tabindex="0" role="button" aria-label="Buitenunit SUZ-SWM60 VA">
@@ -439,6 +466,12 @@ function schemaSvg(floors, curve) {
     <text class="t s" x="120" y="314" text-anchor="middle">ventilator + verdamper</text>
     <text class="val sm" id="v-defrost" x="120" y="332" text-anchor="middle"></text>
   </g>
+  <g class="comp" data-c="asgOut" tabindex="0" role="button" aria-label="Extra buitenunitwaarden via Asgard">
+    <rect class="hit" x="40" y="346" width="240" height="50"/>
+    <text class="val sm" id="v-out1" x="44" y="358"></text>
+    <text class="val sm" id="v-out2" x="44" y="371"></text>
+    <text class="val sm" id="v-out3" x="44" y="384"></text>
+  </g>
   <g class="comp" data-c="comp" data-also="meterOut" tabindex="0" role="button" aria-label="Compressor">
     <rect class="hit" x="196" y="200" width="74" height="130"/>
     <rect class="shape compbody" x="208" y="236" width="50" height="72" rx="22"/>
@@ -455,125 +488,175 @@ function schemaSvg(floors, curve) {
   </g>
 
   <g class="comp" data-c="ftc" tabindex="0" role="button" aria-label="FTC6 regelaar en Asgard">
-    <rect class="shape" x="560" y="110" width="180" height="70" rx="6"/>
-    <text class="t b" x="574" y="134">FTC6 regelaar</text>
-    <text class="t s" x="574" y="151">+ Asgard (ESP32-S3)</text>
-    <text class="val" id="v-wifi" x="574" y="170"></text>
-    <path class="wifi" d="M707,140 a15,15 0 0 1 22,0 M711,145 a9,9 0 0 1 14,0" fill="none" stroke-width="1.8" stroke-linecap="round"/>
-    <circle class="fill-ink" cx="718" cy="151" r="2.4"/>
+    <rect class="shape" x="560" y="70" width="180" height="58" rx="6"/>
+    <text class="t b" x="574" y="90">FTC6 regelaar</text>
+    <text class="t s" x="574" y="105">+ Asgard (ESP32-S3)</text>
+    <text class="val" id="v-wifi" x="574" y="121"></text>
+    <path class="wifi" d="M707,94 a15,15 0 0 1 22,0 M711,99 a9,9 0 0 1 14,0" fill="none" stroke-width="1.8" stroke-linecap="round"/>
+    <circle class="fill-ink" cx="718" cy="105" r="2.4"/>
+    ${nb(548, 78, 1)}
+    <text class="val sm" id="v-in1" x="560" y="142"></text>
   </g>
 
-  <g class="comp" data-c="hex" tabindex="0" role="button" aria-label="Platenwarmtewisselaar">
-    <rect class="shape" x="380" y="200" width="60" height="130" rx="4"/>
-    <g stroke="var(--muted)" stroke-width="1.2">
-      <line x1="388" y1="214" x2="432" y2="214"/><line x1="388" y1="230" x2="432" y2="230"/>
-      <line x1="388" y1="246" x2="432" y2="246"/><line x1="388" y1="262" x2="432" y2="262"/>
-      <line x1="388" y1="278" x2="432" y2="278"/><line x1="388" y1="294" x2="432" y2="294"/>
-      <line x1="388" y1="310" x2="432" y2="310"/>
-    </g>
-    <text class="t s" x="410" y="350" text-anchor="middle">platenwisselaar</text>
-    <text class="val" id="v-cond" x="410" y="190" text-anchor="middle"></text>
+  <!-- veiligheidsgroep op de aanvoer: ontluchter 9, overdrukventiel 8 (3 bar), expansievat 10 (12 L), manometer 7 -->
+  <g class="comp" data-c="safety" tabindex="0" role="button" aria-label="Expansievat, manometer, ontluchter en overdrukventiel">
+    <rect class="hit" x="370" y="110" width="140" height="130"/>
+    <path class="pipe hot thin" d="M450,448 H400 V134"/>
+    <rect class="shape" x="394" y="120" width="12" height="10" rx="2"/>
+    <path class="shape" d="M386,136 l-10,-6 v12 z"/>
+    <path class="pwr" d="M376,142 v8" style="stroke:var(--muted);filter:none;stroke-width:1.2"/>
+    <text class="t s" x="414" y="128">ontluchter</text>
+    <text class="t s" x="414" y="141">overdruk 3 bar</text>
+    ${nb(476, 124, 9)}
+    ${nb(498, 137, 8)}
+    <rect class="shape" x="382" y="156" width="36" height="42" rx="14"/>
+    <text class="t s" x="426" y="174">expansievat</text>
+    <text class="t s" x="426" y="187">12 L · 1 bar</text>
+    ${nb(498, 183, 10)}
+    <circle class="shape" cx="400" cy="220" r="9"/>
+    <path d="M400,220 l5,-5" stroke="var(--hot)" stroke-width="1.4" stroke-linecap="round"/>
+    <text class="t s" x="416" y="224">manometer</text>
+    ${nb(482, 220, 7)}
+  </g>
+
+  <g class="comp" data-c="hex" tabindex="0" role="button" aria-label="Platenwisselaar koudemiddel-water">
+    <rect class="shape" x="372" y="590" width="40" height="140" rx="4"/>
+    <path class="hexwall" d="M392,594 V726"/>
+    ${pipe("M372,600 H382 V720 H372", "refr", "refr", true)}
+    <path class="pipe thin b-prim" style="stroke:url(#hex3W)" d="M412,720 H402 V600 H412"/><path class="fl f-prim thin" d="M412,720 H402 V600 H412"/>
+    <text class="t s" x="360" y="568">platenwisselaar</text>
+    <text class="val" id="v-cond" x="392" y="582" text-anchor="middle"></text>
+    <text class="val sm" id="v-heat" x="348" y="554"></text>
+    ${nb(392, 744, 3)}
   </g>
 
   <g class="comp" data-c="bh1" data-also="meterIn" tabindex="0" role="button" aria-label="Booster heater 1, 2 kW">
-    <rect class="hit" x="452" y="200" width="68" height="80"/>
-    <rect class="shape" x="458" y="227" width="56" height="26" rx="4"/>
-    <path class="coilheat" d="M464,240 l6,-7 l6,14 l6,-14 l6,14 l6,-14 l6,14 l6,-7" fill="none" stroke-width="1.6"/>
-    <text class="t s" x="486" y="272" text-anchor="middle">BH1 · 2 kW</text>
-    <text class="val" id="v-bh1" x="486" y="218" text-anchor="middle"></text>
-  </g>
-
-  <g class="comp" data-c="pump1" tabindex="0" role="button" aria-label="Pomp 1">
-    <rect class="hit" x="528" y="200" width="44" height="80"/>
-    <circle class="shape pumpbody" cx="550" cy="240" r="15"/>
-    <path d="M543,232 L560,240 L543,248 Z" class="fill-ink"/>
-    <text class="t s" x="550" y="272" text-anchor="middle">pomp 1</text>
-    <text class="val" id="v-pump1" x="550" y="218" text-anchor="middle"></text>
+    <rect class="hit" x="370" y="496" width="100" height="60"/>
+    <rect class="shape" x="440" y="500" width="20" height="52" rx="4"/>
+    <path class="coilheat" d="M450,505 l-6,4 l12,7 l-12,7 l12,7 l-12,7 l12,7 l-6,4" fill="none" stroke-width="1.6"/>
+    <text class="t s" x="432" y="522" text-anchor="end">BH1 · 2 kW</text>
+    <text class="val" id="v-bh1" x="432" y="537" text-anchor="end"></text>
+    ${nb(472, 526, 4)}
   </g>
 
   <g class="comp" data-c="thw1" tabindex="0" role="button" aria-label="Aanvoervoeler THW1">
-    <rect class="hit" x="580" y="200" width="50" height="80"/>
-    <circle class="sensor" cx="608" cy="240" r="7"/>
-    <text class="t s" x="608" y="272" text-anchor="middle">THW1</text>
-    <text class="val" id="v-aanvoer" x="608" y="220" text-anchor="middle"></text>
+    <rect class="hit" x="380" y="458" width="100" height="30"/>
+    <circle class="sensor" cx="450" cy="472" r="7"/>
+    <text class="t s" x="438" y="469" text-anchor="end">THW1</text>
+    <text class="val" id="v-aanvoer" x="438" y="483" text-anchor="end"></text>
+    ${nb(470, 472, 24)}
   </g>
 
   <g class="comp" data-c="valve" tabindex="0" role="button" aria-label="Driewegklep">
-    <rect class="hit" x="664" y="196" width="96" height="70"/>
-    <polygon class="shape" points="675,230 690,240 675,250"/>
-    <polygon class="shape vport" id="port-heat" points="705,230 690,240 705,250"/>
-    <polygon class="shape vport" id="port-dhw" points="680,256 690,240 700,256"/>
-    <line x1="690" y1="240" x2="690" y2="224" stroke="var(--ink)" stroke-width="1.6"/>
-    <rect class="shape" x="682" y="212" width="16" height="12" rx="2"/>
-    <text class="t s" x="704" y="210">3-wegklep</text>
-    <text class="val" id="v-klep" x="708" y="262"></text>
+    <rect class="hit" x="418" y="380" width="96" height="62"/>
+    <polygon class="shape" points="440,427 450,412 460,427"/>
+    <polygon class="shape vport" id="port-heat" points="440,397 450,412 460,397"/>
+    <polygon class="shape vport" id="port-dhw" points="465,402 450,412 465,422"/>
+    <line x1="450" y1="412" x2="434" y2="412" stroke="var(--ink)" stroke-width="1.6"/>
+    <rect class="shape" x="422" y="406" width="12" height="12" rx="2"/>
+    <text class="t s" x="460" y="390">3-wegklep</text>
+    <text class="val" id="v-klep" x="464" y="446"></text>
+    ${nb(428, 432, 5)}
+  </g>
+
+  <!-- tapwaterkant: platenwisselaar water-water 16, kalkvanger 17, sanitaire pomp 18 -->
+  <g class="comp" data-c="hex16" tabindex="0" role="button" aria-label="Platenwisselaar water-water voor tapwater">
+    <rect class="shape" x="516" y="395" width="40" height="90" rx="4"/>
+    <path class="hexwall" d="M536,399 V481"/>
+    <path class="pipe thin b-dhw" style="stroke:url(#hex16P)" d="M516,412 H526 V470 H516"/><path class="fl f-dhw thin" d="M516,412 H526 V470 H516"/>
+    <path class="pipe thin b-dhw" style="stroke:url(#hex16S)" d="M556,470 H546 V412 H556"/><path class="fl f-dhw thin" d="M556,470 H546 V412 H556"/>
+    <text class="t s" x="536" y="499" text-anchor="middle">wisselaar</text>
+    <text class="t s" x="536" y="511" text-anchor="middle">tapwater</text>
+    ${nb(536, 525, 16)}
+  </g>
+  ${pipe("M580,640 H566 V470 H556", "cold", "dhw", true)}
+  ${pipe("M556,412 H566 V325 H580", "dhw", "dhw", true)}
+  <g class="comp" data-c="scale" tabindex="0" role="button" aria-label="Kalkvanger">
+    <rect class="hit" x="540" y="356" width="34" height="34"/>
+    <rect class="shape" x="559" y="362" width="14" height="24" rx="3"/>
+    <path d="M562,366 l8,4 l-8,4 l8,4 l-8,4" fill="none" stroke="var(--muted)" stroke-width="1"/>
+    ${nb(548, 374, 17)}
+  </g>
+  <g class="comp" data-c="pump18" tabindex="0" role="button" aria-label="Sanitaire pomp">
+    <rect class="hit" x="540" y="310" width="40" height="44"/>
+    <circle class="shape pump18" cx="566" cy="340" r="10"/>
+    <path d="M561,345 L566,334 L571,345 Z" class="fill-ink"/>
+    ${nb(548, 336, 18)}
   </g>
 
   <g class="comp" data-c="filter" tabindex="0" role="button" aria-label="Filter en debietmeter">
-    <rect class="shape" x="490" y="322" width="22" height="16" rx="2"/>
-    <path d="M493,325 l16,10 M509,325 l-16,10" stroke="var(--muted)" stroke-width="1.2"/>
-    <rect class="shape" x="540" y="322" width="22" height="16" rx="8"/>
-    <text class="t s" x="526" y="356" text-anchor="middle">filter · debiet</text>
-    <text class="val sm" id="v-flow" x="526" y="372" text-anchor="middle"></text>
+    <rect class="hit" x="508" y="738" width="104" height="44"/>
+    <rect class="shape" x="585" y="743" width="20" height="14" rx="7"/>
+    <text class="t s" x="595" y="773" text-anchor="middle">debiet</text>
+    <text class="val sm" id="v-flow" x="626" y="738"></text>
+    ${nb(595, 787, 11)}
+    <rect class="shape" x="516" y="742" width="20" height="16" rx="2"/>
+    <path d="M519,745 l14,10 M533,745 l-14,10" stroke="var(--muted)" stroke-width="1.2"/>
+    <text class="t s" x="526" y="773" text-anchor="middle">filter</text>
+    ${nb(526, 787, 12)}
   </g>
 
   <g class="comp" data-c="thw2" tabindex="0" role="button" aria-label="Retourvoeler THW2">
-    <rect class="hit" x="606" y="300" width="50" height="62"/>
-    <circle class="sensor" cx="632" cy="330" r="7"/>
-    <text class="t s" x="632" y="356" text-anchor="middle">THW2</text>
-    <text class="val" id="v-retour" x="632" y="314" text-anchor="middle"></text>
-    <text class="val sm" id="v-dt" x="632" y="372" text-anchor="middle"></text>
+    <rect class="hit" x="542" y="726" width="36" height="66"/>
+    <circle class="sensor" cx="560" cy="750" r="7"/>
+    <text class="t s" x="560" y="773" text-anchor="middle">THW2</text>
+    <text class="val" id="v-retour" x="560" y="737" text-anchor="middle"></text>
+    <text class="val sm" id="v-dt" x="626" y="724"></text>
+    ${nb(560, 787, 25)}
+  </g>
+
+  <g class="comp" data-c="pump1" tabindex="0" role="button" aria-label="Pomp 1">
+    <rect class="hit" x="440" y="722" width="66" height="66"/>
+    <circle class="shape pumpbody" cx="484" cy="750" r="13"/>
+    <path d="M491,743 L476,750 L491,757 Z" class="fill-ink"/>
+    <path class="shape" d="M446,744 l8,6 l-8,6 z M462,744 l-8,6 l8,6 z"/>
+    <text class="t s" x="484" y="775" text-anchor="middle">pomp 1</text>
+    <text class="val" id="v-pump1" x="484" y="731" text-anchor="middle"></text>
+    ${nb(484, 787, 13)}
+    ${nb(454, 770, 14)}
   </g>
 
   <g class="comp" data-c="tank" data-also="wh" tabindex="0" role="button" aria-label="Tapwatervat 200 liter">
-    <rect id="tankfill" x="474" y="424" width="242" height="342" rx="36"/>
-    <rect class="tankshade" x="474" y="424" width="242" height="342" rx="36"/>
-    <rect class="shape" x="470" y="420" width="250" height="350" rx="40" style="fill:none"/>
-    <text class="t b" x="595" y="752" text-anchor="middle">tapwatervat 200 L</text>
-    <text class="val sm" id="v-target" x="595" y="446" text-anchor="middle"></text>
+    <rect id="tankfill" x="584" y="304" width="132" height="392" rx="30"/>
+    <rect class="tankshade" x="584" y="304" width="132" height="392" rx="30"/>
+    <rect class="shape" x="580" y="300" width="140" height="400" rx="34" style="fill:none"/>
+    <text class="t b" x="650" y="672" text-anchor="middle">tapwatervat</text>
+    <text class="t b" x="650" y="687" text-anchor="middle">200 L</text>
+    <text class="val sm" id="v-target" x="660" y="320" text-anchor="middle"></text>
+    ${nb(650, 650, 15)}
   </g>
-  <g class="comp" data-c="coil" tabindex="0" role="button" aria-label="Warmtewisselspiraal in het vat">
-    <rect class="hit" x="520" y="460" width="180" height="200"/>
-    ${pipe("M690,420 V470 H530 V500 H690 V530 H530 V560 H690 V590 H530 V620 H690 V650 H720", "coil", "dhw", true)}
-  </g>
-  <g class="comp" data-c="imm" tabindex="0" role="button" aria-label="Dompelaar, optioneel">
-    <rect class="ghost" id="imm-shape" x="530" y="684" width="130" height="16" rx="3"/>
-    <text class="t s" x="595" y="720" text-anchor="middle">dompelaar (niet ingebouwd)</text>
+  ${pipe("M580,325 H598 V506 a8,8 0 0 0 8,8", "dhw", "dhw", true)}
+  <g class="comp" data-c="imm" tabindex="0" role="button" aria-label="Dompelaar, niet ingebouwd">
+    <rect class="ghost" id="imm-shape" x="606" y="590" width="88" height="12" rx="3"/>
+    <text class="t s" x="650" y="618" text-anchor="middle">dompelaar n.v.t.</text>
+    ${nb(700, 596, 19)}
   </g>
   <g class="comp" data-c="thw5" tabindex="0" role="button" aria-label="Tankvoelers THW5A en THW5B">
-    <rect class="hit" x="400" y="496" width="90" height="46"/>
-    <circle class="sensor" cx="472" cy="520" r="7"/>
-    <text class="t s" x="458" y="514" text-anchor="end">THW5A</text>
-    <text class="val" id="v-tank2" x="458" y="533" text-anchor="end"></text>
-    <rect class="hit" x="400" y="606" width="90" height="46"/>
-    <circle class="sensor" cx="472" cy="630" r="7"/>
-    <text class="t s" x="458" y="624" text-anchor="end">THW5B</text>
-    <text class="val" id="v-tank" x="458" y="643" text-anchor="end"></text>
+    <rect class="hit" x="640" y="430" width="86" height="106"/>
+    <circle class="sensor" cx="720" cy="450" r="7"/>
+    <text class="t s" x="708" y="446" text-anchor="end">THW5A</text>
+    <text class="val" id="v-tank2" x="708" y="461" text-anchor="end"></text>
+    ${nb(700, 476, 26)}
+    <circle class="sensor" cx="720" cy="500" r="7"/>
+    <text class="t s" x="708" y="496" text-anchor="end">THW5B</text>
+    <text class="val" id="v-tank" x="708" y="511" text-anchor="end"></text>
+    ${nb(700, 526, 27)}
   </g>
 
+  <text class="zlabel" x="32" y="442">HOOFDSCHERM</text>
+  <text class="t s" x="290" y="442" text-anchor="end">bediening cilinderunit</text>
+  <g class="comp" data-c="ctrl" tabindex="0" role="button" aria-label="Hoofdscherm van de bediening">
+    <rect class="hit" x="20" y="450" width="282" height="250"/>
+    ${ctrlSvg(23, 452, 276)}
+  </g>
   <g class="comp" data-c="unused" tabindex="0" role="button" aria-label="Niet aangesloten onderdelen">
-    <rect class="hit" x="16" y="416" width="290" height="330"/>
-    <text class="zlabel" x="32" y="442">NIET AANGESLOTEN</text>
-    <text class="t s" x="32" y="460">entiteiten bestaan wel, maar meten niets</text>
-    <polygon class="ghost" points="38,500 56,512 38,524"/>
-    <polygon class="ghost" points="74,500 56,512 74,524"/>
-    <polygon class="ghost" points="44,536 56,512 68,536"/>
-    <text class="t b" x="92" y="502">Mengklep zone 1</text>
-    <text class="t s" x="92" y="518">z1 feed/return · mixing valve step</text>
-    <text class="val off" id="v-z1mix" x="92" y="534"></text>
-    <rect class="ghost" x="40" y="586" width="32" height="60" rx="12"/>
-    <text class="t b" x="92" y="604">Mengvat / buffervat</text>
-    <text class="t s" x="92" y="620">mixing tank temperature</text>
-    <text class="val off" id="v-mixing" x="92" y="636"></text>
-    <circle class="ghost" cx="56" cy="716" r="18"/>
-    <path d="M49,708 L66,716 L49,724 Z" fill="none" stroke="var(--off)" stroke-width="1.4"/>
-    <text class="t b" x="92" y="704">Pomp 2 (zonepomp)</text>
-    <text class="t s" x="92" y="720">water pump 2</text>
-    <text class="val off" id="v-pump2" x="92" y="736"></text>
+    <rect class="hit" x="24" y="716" width="274" height="34"/>
+    <line x1="32" y1="716" x2="290" y2="716" stroke="var(--line)" stroke-width="1"/>
+    <text class="t b" x="32" y="734" style="fill:var(--muted)">Niet aangesloten</text>
+    <text class="t s" x="32" y="749">mengklep zone 1 · mengvat · pomp 2</text>
   </g>
   <g class="comp" data-c="absent" tabindex="0" role="button" aria-label="Niet in jouw installatie">
-    <rect class="hit" x="24" y="752" width="274" height="46"/>
-    <line x1="32" y1="756" x2="290" y2="756" stroke="var(--line)" stroke-width="1"/>
+    <rect class="hit" x="24" y="756" width="274" height="40"/>
     <text class="t b" x="32" y="774" style="fill:var(--muted)">Niet in jouw installatie</text>
     <text class="t s" x="32" y="790">koeling · zone 2 · BH2 · pomp 3 en 4</text>
   </g>
@@ -600,6 +683,25 @@ function schemaSvg(floors, curve) {
   ${curveSvg(curve)}
 
   <g id="floors">${floorsSvg(floors)}</g>
+  <!-- tappunten: alleen als de panel-indeling de standaardindeling is (begane grond onderaan, 1e in het midden) -->
+  <g class="comp" data-c="taps" tabindex="0" role="button" aria-label="Tappunten warm water">
+    ${pipe("M788,503 H804 a8,8 0 0 1 16,0 H826 a8,8 0 0 1 16,0 H1132", "dhw", "tap")}
+    ${pipe("M788,733 H1100", "dhw", "tap")}
+    <rect class="hit" x="1070" y="460" width="112" height="50"/>
+    <rect class="hit" x="1070" y="690" width="112" height="50"/>
+    <path class="pipe dhw thin" d="M1080,503 V490"/>
+    <path class="shape tapfix" d="M1070,484 h20 a10,8 0 0 1 -20,0 z"/>
+    <path class="tapfix" d="M1076,478 h7 v6" fill="none" stroke-width="2" stroke-linecap="round"/>
+    <text class="t loop" x="1091" y="489">wasbak</text>
+    <path class="pipe dhw thin" d="M1132,503 V474"/>
+    <path class="shape tapfix" d="M1124,474 h16 a8,6 0 0 0 -16,0 z"/>
+    <path class="drops" d="M1127,479 v5 M1132,479 v7 M1137,479 v5" fill="none" stroke-width="1.4" stroke-linecap="round"/>
+    <text class="t loop" x="1143" y="489">douche</text>
+    <path class="pipe dhw thin" d="M1100,733 V716"/>
+    <path class="shape tapfix" d="M1086,712 h28 v-6 h-28 z"/>
+    <path class="tapfix" d="M1096,706 v-10 h10 v4" fill="none" stroke-width="2" stroke-linecap="round"/>
+    <text class="t s" x="1120" y="712">keuken</text>
+  </g>
 </svg>`;
 }
 
@@ -609,18 +711,28 @@ const C = {
   comp: { name: "Compressor", where: "In de buitenunit", text: "Het hart van de warmtepomp. Drukt het koudemiddel samen, waardoor het heet wordt. Het is een inverter: het toerental (in Hz) past zich aan de vraag aan. 0 Hz = uit." },
   th7: { name: "Buitenvoeler TH7", where: "Achterkant buitenunit", text: "Meet de buitentemperatuur. De regelaar gebruikt die voor de stooklijn: hoe kouder het buiten is, hoe warmer het water naar de vloeren gaat." },
   refr: { name: "Koudemiddelleidingen (R32)", where: "Tussen tuin en technische ruimte", text: "Twee koperen leidingen: een dikke gasleiding (heet gas naar binnen) en een dunne vloeistofleiding (terug naar buiten). Dit is een split-systeem: het koudemiddel komt tot in de cilinderunit. De paarse bolletjes lopen zodra de compressor draait; hoe hoger het toerental, hoe sneller." },
-  hex: { name: "Platenwarmtewisselaar", where: "In de cilinderunit", text: "Hier wordt koudemiddel-warmte omgezet in warm water. Het hete koudemiddel condenseert (wordt weer vloeibaar) en geeft daarbij zijn warmte af aan het verwarmingswater dat er aan de andere kant langs stroomt." },
+  hex: { name: "Platenwisselaar koudemiddel-water (3)", where: "In de cilinderunit", text: "Hier wordt koudemiddel-warmte omgezet in warm water. Links stroomt het koudemiddel (paars): het hete gas condenseert en verlaat de wisselaar als vloeistof langs TH2. Rechts stroomt het verwarmingswater van onder naar boven en warmt op. De platen houden beide circuits gescheiden." },
   ftc: { name: "FTC6 regelaar + Asgard", where: "In de cilinderunit (achter het bedieningspaneel)", text: "Het brein. De FTC6 leest alle voelers, stuurt pomp, klep en heaters aan en berekent het energieverbruik. De Asgard is een ESP32-S3 met ESPHome (esphome-ecodan-hp) op de CN105-aansluiting van de FTC6. Hij leest de waarden rechtstreeks uit de regelaar en geeft ze via de ESPHome-integratie binnen enkele seconden aan Home Assistant door, zonder cloud. Ook de buitenunit-waarden (persgas, zuiggas, ventilatortoerental) komen via de FTC6; op sommige buitenunits blijven die leeg." },
   bh1: { name: "Booster heater 1 (2 kW)", where: "In de aanvoerleiding, in de cilinderunit", text: "Een elektrisch verwarmingselement direct in het water. Springt bij als de warmtepomp het alleen niet redt: strenge vorst, ontdooien, of de wekelijkse legionella-run (vat naar ±60 °C). Dit is de dure route: 1 kWh stroom = 1 kWh warmte." },
   pump1: { name: "Pomp 1 (circulatiepomp)", where: "In de cilinderunit", text: "Ingebouwde pomp die het water rondpompt door de platenwisselaar en daarna naar het vat óf de vloeren. Staat de pomp uit, dan stroomt er niets en staan er in het schema geen bolletjes op de waterleidingen." },
   thw1: { name: "Aanvoervoeler THW1", where: "Aanvoerleiding, na booster heater", text: "Temperatuur van het water dat de unit verlaat. Bij vloerverwarming meestal 25–35 °C; bij tapwater maken hoger, tot ±55 °C." },
-  valve: { name: "3-wegklep", where: "In de cilinderunit", text: "Wissel tussen twee bestemmingen. Stand 'verwarming': water gaat naar de vloerverwarming. Stand 'tapwater': water gaat door de spiraal in het vat. Het schema kleurt de actieve uitgang en dimt de tak die niet in gebruik is." },
+  valve: { name: "3-wegklep", where: "In de cilinderunit", text: "Wissel tussen twee bestemmingen. Stand 'verwarming': water gaat naar de vloerverwarming. Stand 'tapwater': water gaat door platenwisselaar 16 naast het vat. Het schema kleurt de actieve uitgang en dimt de tak die niet in gebruik is." },
   filter: { name: "Filter en debietmeter", where: "Retourleiding, in de cilinderunit", text: "Het filter vangt vuil uit het verwarmingswater (onderdeel van het onderhoud). De debietmeter meet hoeveel liter per minuut er stroomt; voor de SWM60 hoort dat tussen 7,2 en 17,2 L/min te liggen. De Asgard geeft het debiet door (Flow Rate); het staat in het schema onder filter · debiet." },
   thw2: { name: "Retourvoeler THW2", where: "Retourleiding, in de cilinderunit", text: "Temperatuur van het water dat terugkomt. Het verschil met de aanvoer (ΔT) laat zien hoeveel warmte er is afgegeven. Bij vloerverwarming is 3–7 °C verschil normaal." },
-  tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit; het geeft zijn warmte af via de spiraal. De kleur in het vat volgt de tanktemperatuur." },
-  coil: { name: "Spiraal in het vat", where: "In het tapwatervat", text: "Als de 3-wegklep op tapwater staat, stroomt het warme verwarmingswater bovenin de spiraal in, geeft zijn warmte af aan het vat en verlaat de spiraal afgekoeld rechtsonder. Daarom loopt de kleur van rood naar blauw." },
+  tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat (15) met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit: het vat wordt opgewarmd via platenwisselaar 16 en sanitaire pomp 18. Koud leidingwater komt onderin binnen, warm tapwater gaat bovenuit naar de kranen. Maximaal 70 °C. De kleur in het vat volgt de tanktemperatuur." },
+  ctrl: { name: "Hoofdscherm van de bediening", where: "Voorkant cilinderunit (servicehandleiding 9-1)", text: "Nagebouwd display van de bediening, gevuld met de live waarden van de Asgard. Kraan met kader: tapwater wordt nu opgewarmd. Huis met zon: ruimteverwarming zone 1. In het kolommetje ernaast: ▶ in bedrijf, II stand-by. Balkjes bovenaan: de warmtepomp draait. Bliksem: de booster heater staat aan. Vat met blokjes: legionellapreventie. Koffer: vakantiemodus. ECO: tapwater in Eco-stand. Daaronder de kamertemperatuur van de voeler in het bedieningspaneel (Zone 1 Room Temp) en de vattemperatuur (THW5B); groot het aanvoerdoel dat de FTC6 nu gebruikt (Zone 1 Setpoint Value)." },
+  taps: { name: "Tappunten warm water", where: "Keuken (begane grond), wasbak en douche (1e verdieping)", text: "Tijdens het tappen draait er geen pomp. De waterleidingdruk duwt koud water onderin het vat, en dat duwt het warme water bovenuit naar de kraan. Pas als het vat daardoor genoeg afkoelt, gaat de warmtepomp het vat opwarmen; dan draaien pomp 1 en de sanitaire pomp 18. Welke kraan open staat is niet te meten; het schema laat alle drie de tappunten oplichten zodra er warm water getapt wordt." },
+  ds18: { name: "1-wire-voeler (DS18B20) op de warmwaterleiding", where: "Idee: op de uitgaande warmwaterleiding van het vat", text: "De Asgard heeft een 1-wire-aansluiting voor maximaal zes DS18B20-voelers. Een voeler op de warmwaterleiding warmt binnen seconden op zodra er getapt wordt. Zo is tappen direct en betrouwbaar te zien, ook zonder dat het vat al merkbaar afkoelt." },
+  asgOut: { name: "Servicewaarden buitenunit en pomp (Asgard)", where: "Buitenunit en pomp 1", text: "De Asgard vraagt bij de FTC6 ook servicewaarden van de buitenunit op: persgastemperatuur (TH4), zuiggas, verdamping, ventilatortoerental, oververhitting, onderkoeling, compressorstarts en draaiuren, plus de stand en het verbruik van pomp 1. Die servicecodes werken niet op alle SUZ-buitenunits; blijft een waarde leeg, dan geeft jouw buitenunit hem niet door." },
+  hex16: { name: "Platenwisselaar water-water (16)", where: "In de cilinderunit, naast het vat", text: "Het vat heeft geen spiraal. Staat de 3-wegklep (5) op tapwater, dan stroomt het verwarmingswater door de linkerhelft van deze tweede platenwisselaar en via de debietmeter (11) terug naar de warmtepomp. Door de rechterhelft pompt de sanitaire pomp (18) koud water van onderin het vat; dat gaat opgewarmd via de kalkvanger (17) en pomp 18 terug het vat in en komt vrij net onder THW5B. Het verwarmingswater en het drinkwater raken elkaar niet." },
+  pump18: { name: "Sanitaire pomp (18)", where: "Tussen wisselaar 16 en het vat", text: "Pompt tijdens het opwarmen van tapwater het water van onderin het vat via de kalkvanger (17) en wisselaar 16 terug naar bovenin. Draait alleen in tapwaterstand. De FTC6 meldt deze pomp niet apart; het schema laat hem meedraaien met de tapwaterstand." },
+  scale: { name: "Kalkvanger (17)", where: "Sanitair circuit, voor pomp 18", text: "Vangt kalk op die uit het drinkwater neerslaat bij het opwarmen, zodat wisselaar 16 en pomp 18 niet dichtslibben. Hoort bij het jaarlijkse onderhoud." },
+  safety: { name: "Expansievat, manometer, ontluchter en overdrukventiel", where: "Aanvoerleiding, bovenin de cilinderunit", text: "Expansievat 10 (12 L, voordruk 1 bar) vangt het uitzetten van het verwarmingswater op. Manometer 7 toont de waterdruk. Automatische ontluchter 9 laat lucht ontsnappen en overdrukventiel 8 opent bij 3 bar. Niets hiervan is uit te lezen; de waterdruk lees je af op de manometer." },
+  dhwsafe: { name: "Overdrukventiel tapwater (21) en terugslagklep (33)", where: "Tapwateraansluitingen", text: "Overdrukventiel 21 beschermt het vat en opent bij 10 bar. Terugslagklep 33 (lokaal geplaatst) voorkomt dat tapwater terugstroomt in de waterleiding." },
+  th2: { name: "Koudemiddelvoeler TH2 (28)", where: "Vloeistofleiding bij platenwisselaar 3", text: "Meet de temperatuur van het vloeibare koudemiddel na de platenwisselaar (Refrigerant Liquid Temp). Het verschil met de condensatietemperatuur is de onderkoeling: een paar graden is normaal." },
+  psens: { name: "Drukvoeler (29)", where: "Gasleiding bij platenwisselaar 3", text: "Meet de druk van het koudemiddel aan de gaskant. De FTC6 rekent daar de condensatietemperatuur uit (Refrigerant Condensing Temp); de druk zelf geeft hij niet door." },
   imm: { name: "Dompelaar (immersion heater)", where: "Zou in het vat zitten", text: "Een optioneel elektrisch element direct in het tapwatervat. De standaard EHST20D-uitvoeringen hebben er geen; de entiteit bestaat omdat de regelaar het wel kán aansturen." },
-  thw5: { name: "Tankvoelers THW5A en THW5B", where: "Boven- en onderin het vat", text: "THW5B zit onderin en is de voeler waarop de FTC6 regelt (DHW Current Temp). Zakt die onder de ingestelde waarde min de toegestane daling (DHW Max Temp Drop), dan schakelt de warmtepomp naar tapwater. THW5A zit bovenin (DHW Secondary Temp) en laat zien hoe warm het water is dat naar de kranen gaat; boven is het vat warmer dan onder. Tap je warm water, dan stroomt er onderin koud leidingwater bij en zakt THW5B snel; daaraan herkent het panel dat het water via het vat loopt. Geeft THW5A vast 25,0 °C, dan is er geen bovenste voeler aangesloten." },
+  thw5: { name: "Tankvoelers THW5A (26) en THW5B (27)", where: "THW5A bovenin, THW5B onderin het vat", text: "THW5B zit onderin en is de voeler waarop de FTC6 regelt (DHW Current Temp). Zakt die onder de ingestelde waarde min de toegestane daling (DHW Max Temp Drop), dan schakelt de warmtepomp naar tapwater. THW5A zit bovenin (DHW Secondary Temp) en laat zien hoe warm het water is dat naar de kranen gaat; boven is het vat warmer dan onder. Tap je warm water, dan stroomt er onderin koud leidingwater bij en zakt THW5B snel; daaraan herkent het panel dat het water via het vat loopt. Geeft THW5A vast 25,0 °C, dan is er geen bovenste voeler aangesloten." },
   cyl: { name: "Cilinderunit EHST20D-VM2D", where: "Technische ruimte", text: "Alles-in-één binnenunit: platenwisselaar, pomp, 3-wegklep, 2 kW booster heater, expansievat, regelaar en een 200 L tapwatervat in één kast. 'VM2' = 1-fase, 2 kW booster heater. De H in EHST staat voor alleen verwarmen: deze unit kan niet koelen." },
   manifold: { name: "Vloerverwarmingsverdelers", where: "Eén per verdieping", text: "Verdelen het warme water over de lussen van een verdieping: 5 op de begane grond, 5 op de 1e en 3 op de 2e verdieping. Elke lus is een slang die door één kamer (of een deel ervan) in de dekvloer loopt en afgekoeld terugkomt." },
   act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' die een lus open of dicht zetten, aangestuurd door de thermostaat via de regelunit. Op de begane grond en de 2e verdieping zit er één op de hoofdaanvoer van de verdeler: de thermostaat zet daar alle lussen tegelijk open of dicht. Op de 1e verdieping heeft elke slaapkamer een eigen aandrijving; die van de badkamer volgt de thermostaat van slaapkamer 1. De lus naar de overloop heeft geen aandrijving en staat altijd open. Lussen zonder aandrijving hebben alleen een handwiel (het rondje op de verdeler). De aandrijvingen zijn niet uit te lezen: het panel neemt aan dat een kraan open staat zodra de kamer 0,2 °C onder de ingestelde waarde zakt en weer dicht gaat 0,2 °C erboven. Een open kraan krijgt een rode rand en alleen door open lussen lopen bolletjes als de vloerverwarming draait." },
@@ -653,23 +765,23 @@ const G = [
     { k: "cond", n: "Refrigerant Condensing Temp", c: "hex", x: "Temperatuur waarbij het koudemiddel in de platenwisselaar condenseert, dus waar de warmte aan het water wordt afgegeven. Wordt berekend uit de druk in de buitenunit, maar hoort fysiek bij de platenwisselaar.",
       now: X => !X.compRun ? "Bij stilstand zakt het koudemiddel richting omgevingstemperatuur."
       : X.aanvoer != null && X.cond != null ? `${fmt(X.cond - X.aanvoer, 1)} °C boven de aanvoertemperatuur. Een paar graden is normaal; hoe kleiner, hoe zuiniger.` : "" },
-    { k: "th2", n: "Refrigerant Liquid Temp", c: "hex", x: "Voeler TH2 op de vloeistofleiding na de platenwisselaar: het gecondenseerde koudemiddel dat terug naar buiten gaat.",
+    { k: "th2", n: "Refrigerant Liquid Temp", c: "th2", x: "Voeler TH2 op de vloeistofleiding na de platenwisselaar: het gecondenseerde koudemiddel dat terug naar buiten gaat.",
       now: X => X.compRun && X.th2 != null && X.retour != null ? `${fmt(X.th2 - X.retour, 1)} °C ten opzichte van de retour.` : "" },
-    { k: "discharge", n: "Discharge Temp", c: "comp", x: "Temperatuur van het hete gas direct na de compressor (persgas). Ruim boven de condensatietemperatuur; te hoog wijst op te weinig koudemiddel." },
-    { k: "superheat", n: "Discharge Superheat Temp", c: "comp", x: "Hoeveel het persgas warmer is dan de condensatietemperatuur. De buitenunit regelt hiermee het expansieventiel." },
-    { k: "subcool", n: "Subcooling Temp", c: "hex", x: "Hoeveel het vloeibare koudemiddel na de platenwisselaar onder de condensatietemperatuur is afgekoeld. Een paar graden is normaal." },
-    { k: "ou_suction", n: "Outside Unit Suction Pipe Temp", c: "outdoor", x: "Zuiggasleiding naar de compressor: het koudemiddel dat net warmte uit de buitenlucht heeft opgenomen." },
-    { k: "ou_2phase", n: "Outside Unit Two Phase Pipe Temp", c: "outdoor", x: "Leiding in de verdamper waar het koudemiddel half vloeibaar, half gas is: de verdampingstemperatuur. Ligt onder de buitentemperatuur." },
-    { k: "ou_liquid", n: "Outside Unit Liquid Pipe 1 Temp", c: "outdoor", x: "Vloeistofleiding in de buitenunit, vóór het expansieventiel." },
-    { k: "ou_surface", n: "Outside Unit Compressor Surface Temp", c: "comp", x: "Temperatuur van de compressorbehuizing." },
-    { k: "ou_heatsink", n: "Outside Unit Heatsink Temp", c: "comp", x: "Koelplaat van de inverterelektronica die het toerental van de compressor regelt." },
-    { k: "fan", n: "Fan Speed", c: "outdoor", x: "Toerental van de ventilator. Draait mee met de compressor; bij ontdooien staat hij stil." },
-    { k: "starts", n: "Accumulated Compressor Starts", c: "comp", x: "Teller van compressorstarts. Veel starts per dag (pendelen) is slecht voor de levensduur en het rendement." },
-    { k: "runtime", n: "Operating Runtime", c: "comp", x: "Totale draaitijd van de warmtepomp in uren." },
+    { k: "discharge", n: "Discharge Temp", c: "asgOut", x: "Temperatuur van het hete gas direct na de compressor (persgas). Ruim boven de condensatietemperatuur; te hoog wijst op te weinig koudemiddel." },
+    { k: "superheat", n: "Discharge Superheat Temp", c: "asgOut", x: "Hoeveel het persgas warmer is dan de condensatietemperatuur. De buitenunit regelt hiermee het expansieventiel." },
+    { k: "subcool", n: "Subcooling Temp", c: "th2", x: "Hoeveel het vloeibare koudemiddel na de platenwisselaar onder de condensatietemperatuur is afgekoeld. Een paar graden is normaal." },
+    { k: "ou_suction", n: "Outside Unit Suction Pipe Temp", c: "asgOut", x: "Zuiggasleiding naar de compressor: het koudemiddel dat net warmte uit de buitenlucht heeft opgenomen." },
+    { k: "ou_2phase", n: "Outside Unit Two Phase Pipe Temp", c: "asgOut", x: "Leiding in de verdamper waar het koudemiddel half vloeibaar, half gas is: de verdampingstemperatuur. Ligt onder de buitentemperatuur." },
+    { k: "ou_liquid", n: "Outside Unit Liquid Pipe 1 Temp", c: "asgOut", x: "Vloeistofleiding in de buitenunit, vóór het expansieventiel." },
+    { k: "ou_surface", n: "Outside Unit Compressor Surface Temp", c: "asgOut", x: "Temperatuur van de compressorbehuizing." },
+    { k: "ou_heatsink", n: "Outside Unit Heatsink Temp", c: "asgOut", x: "Koelplaat van de inverterelektronica die het toerental van de compressor regelt." },
+    { k: "fan", n: "Fan Speed", c: "asgOut", x: "Toerental van de ventilator. Draait mee met de compressor; bij ontdooien staat hij stil." },
+    { k: "starts", n: "Accumulated Compressor Starts", c: "asgOut", x: "Teller van compressorstarts. Veel starts per dag (pendelen) is slecht voor de levensduur en het rendement." },
+    { k: "runtime", n: "Operating Runtime", c: "asgOut", x: "Totale draaitijd van de warmtepomp in uren." },
   ]},
   { title: "Waterkant cilinderunit", note: "Het verwarmingswater dat rondgaat tussen platenwisselaar, vat en vloeren.", items: [
     { k: "aanvoer", n: "Feed Temp", c: "thw1", now: X => !X.pump1 ? "De pomp staat stil: dit is stilstaand water in de unit (restwarmte), geen echte aanvoer."
-      : X.dhw ? "Water naar de spiraal in het vat." : "Water naar de vloerverwarming." },
+      : X.dhw ? "Water naar platenwisselaar 16 van het tapwatervat." : "Water naar de vloerverwarming." },
     { k: "retour", n: "Return Temp", c: "thw2", now: X => !X.pump1 || X.dT == null ? "De pomp staat stil, dus ΔT zegt nu niets."
       : `ΔT ${fmt(X.dT, 1)} °C` + (X.dhw ? "." : X.dT < 2 ? ": klein, de vloeren nemen weinig warmte af." : X.dT > 8 ? ": groot, veel afgifte of weinig debiet." : ": normaal voor vloerverwarming.") },
     { k: "delta_t", n: "Delta T", c: "thw2", x: "Verschil tussen aanvoer (THW1) en retour (THW2), berekend door de Asgard." },
@@ -679,7 +791,7 @@ const G = [
     { k: "pump_speed", n: "Pump Speed", c: "pump1", x: "Stand van pomp 1 volgens de FTC6." },
     { k: "pump_w", n: "Pump Consumption", c: "pump1", x: "Opgenomen vermogen van pomp 1 volgens de pomp zelf." },
     { k: "pump_fb", n: "Pump Feedback Status", c: "pump1", x: "Terugmelding van pomp 1 aan de FTC6: Active, Warning of een storing." },
-    { k: "klep", n: "3-way Valve", c: "valve", der: X => X.opk == null ? null : X.dhw, derSrc: "Operation Mode", now: X => X.dhw ? "Klep staat op tapwater: het water gaat door de spiraal in het vat." : "Klep staat op ruimteverwarming (vloeren)." },
+    { k: "klep", n: "3-way Valve", c: "valve", der: X => X.opk == null ? null : X.dhw, derSrc: "Operation Mode", now: X => X.dhw ? "Klep staat op tapwater: het water gaat door platenwisselaar 16 naast het vat." : "Klep staat op ruimteverwarming (vloeren)." },
     { k: "bh1", n: "Booster Heater", c: "bh1", der: X => X.bh1, derSrc: "Heat Source", now: X => !X.bh1 ? "Uit: geen elektrische bijverwarming."
       : X.dhw ? "Aan tijdens tapwater: waarschijnlijk de legionella-run (vat naar ±60 °C)."
       : "Aan tijdens verwarmen: de warmtepomp redt het alleen niet (vorst of ontdooien). Dit is dure warmte." },
@@ -696,9 +808,9 @@ const G = [
     { k: "tank2", n: "DHW Secondary Temp (THW5A)", c: "thw5", now: X => fixedNo(X.tank2) || (X.tank2 != null && X.tank != null ? `Bovenin ${fmt(X.tank2 - X.tank, 1)} °C ${X.tank2 >= X.tank ? "warmer" : "kouder"} dan onderin.` : "") },
     { k: "dhw_sp", n: "DHW Setpoint Value", c: "tank", x: "Gewenste temperatuur van het vat, zoals ingesteld op het bedieningspaneel." },
     { k: "dhw_drop", n: "DHW Max Temp Drop", c: "thw5", x: "Hoeveel het vat onder de ingestelde waarde mag zakken voordat de warmtepomp het opnieuw opwarmt (hysterese)." },
-    { k: "dhw_mode", n: "DHW Mode", c: "tank", x: "Normal of Eco. In Eco warmt de warmtepomp het vat rustiger op: zuiniger, maar het duurt langer." },
+    { k: "dhw_mode", n: "DHW Mode", c: "ctrl", x: "Normal of Eco. In Eco warmt de warmtepomp het vat rustiger op: zuiniger, maar het duurt langer." },
     { k: "leg_temp", n: "Legionella Prevention Temp", c: "tank", x: "Temperatuur waar het vat bij de legionella-run naartoe wordt gebracht. De booster heater duwt het laatste stuk." },
-    { k: "tap", n: "Waterverbruik (watermeter)", c: "tank", x: `De watermeter in de meterkast meet al het water in huis, ook voor toilet en koude kranen. Het schema toont alleen stroming door het vat als het vat onderin tegelijk minstens ${fmt(TAP_DROP, 1)} °C afkoelt binnen ${TAP_WIN / 60e3} minuten. Korte tapbeurten (handen wassen) zie je daardoor niet.`,
+    { k: "tap", n: "Waterverbruik (watermeter)", c: "taps", x: `De watermeter in de meterkast meet al het water in huis, ook voor toilet en koude kranen. Het schema toont alleen stroming door het vat als het vat onderin tegelijk minstens ${fmt(TAP_DROP, 1)} °C afkoelt binnen ${TAP_WIN / 60e3} minuten. Korte tapbeurten (handen wassen) zie je daardoor niet.`,
       now: X => !X.tapFlow ? "Er stroomt nu geen water." : X.hotDraw ? `Er wordt warm water getapt: het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld.` : "Er stroomt water, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan." },
   ]},
   { title: "Regelaar en energie", note: "Waarden die de FTC6 berekent of over zichzelf rapporteert.", items: [
@@ -708,7 +820,7 @@ const G = [
       now: X => X.opmode == null ? "" : /curve/i.test(X.opmode) ? "Stooklijn. Zo hoort het bij jouw installatie." : "Let op: niet op de stooklijn. Daardoor regelt de warmtepomp anders dan bedoeld." },
     { k: "z1_sp", n: "Zone 1 Setpoint Value", c: "curve", x: "Het aanvoerdoel dat de FTC6 nu voor de vloerverwarming gebruikt. Bij de stooklijn volgt het uit de buitentemperatuur.",
       now: X => X.z1sp == null || X.curveTarget == null ? "" : Math.abs(X.z1sp - X.curveTarget) < 1 ? "Komt overeen met de stooklijn uit Configureren." : `Wijkt ${fmt(X.z1sp - X.curveTarget, 1)} °C af van de stooklijn uit Configureren: kijk of de punten nog kloppen met het display.` },
-    { k: "z1_room", n: "Zone 1 Room Temp", c: "zone1", x: "Kamertemperatuur volgens de FTC6: de voeler in het bedieningspaneel in de technische ruimte. Speelt bij regeling op de stooklijn geen rol." },
+    { k: "z1_room", n: "Zone 1 Room Temp", c: "ctrl", x: "Kamertemperatuur volgens de FTC6: de voeler in het bedieningspaneel in de technische ruimte. Speelt bij regeling op de stooklijn geen rol." },
     { k: "vraag", n: "In1 Thermostat (warmtevraag)", c: "tstat", x: "Ingang IN1 van de FTC6: het aan/uit-signaal van de regelunit van de vloerverwarming. Aan zodra er ergens een thermostaat warmte vraagt.",
       now: X => X.vraag ? "Aan: minstens één thermostaat vraagt warmte." : "Uit: geen warmtevraag van de vloeren." },
     { k: "p_est", n: "Estimated Output Power", c: "hex", x: "Warmte die de warmtepomp nu levert, berekend door de Asgard uit debiet × ΔT.",
@@ -776,7 +888,7 @@ const STYLE = `
 :host{
   --loopmid:color-mix(in srgb,var(--hot) 50%,var(--ret));
   --bg:#eef1ef; --surface:#fafbfa; --ink:#1b2422; --muted:#5b6865; --line:#c3ccc8; --zone:#e3e8e5;
-  --hot:#c9412c; --ret:#2c64c4; --refr:#7a4bbf; --dhw:#d9820f; --cold:#2a9bb5; --sig:#6c7a76;
+  --asg:#2e8b57; --hot:#c9412c; --ret:#2c64c4; --refr:#7a4bbf; --dhw:#d9820f; --cold:#2a9bb5; --sig:#6c7a76;
   --accent:#2b2f2e; --accent-soft:#dfe4e2; --off:#8a9692; --glow:rgba(0,0,0,.28); --elec:#a87a00; --warn:#b26a00; --warn-soft:#fbeed6;
   --bad:#b3261e; --bad-soft:#f9dedc; --dot:#ffffffee;
   --plate:#ffffff; --plate-edge:#9aa6a2; --lcd:#b9c4b5; --lcd-edge:#8d9a8b;
@@ -792,7 +904,7 @@ const STYLE = `
 :host(.dark){
   /* donker thema: dezelfde matte opbouw als het lichte thema, in neutrale donkere tinten; accent lichtgrijs */
   --bg:#121212; --surface:#1c1c1c; --ink:#e6e6e6; --muted:#9e9e9e; --line:#333333; --zone:#242424;
-  --hot:#ee6a52; --ret:#5d93ee; --refr:#a985e6; --dhw:#f0a33d; --cold:#4cc0d8; --sig:#8a8a8a;
+  --asg:#6fcf97; --hot:#ee6a52; --ret:#5d93ee; --refr:#a985e6; --dhw:#f0a33d; --cold:#4cc0d8; --sig:#8a8a8a;
   --accent:#e0e0e0; --accent-soft:#2f2f2f; --off:#6e6e6e; --elec:#e2b84a; --warn:#f0b04a; --warn-soft:#2e2615;
   --bad:#ff8a80; --bad-soft:#331b19; --dot:#ffffffd9; --glow:rgba(255,255,255,.22);
   --plate:#2c2c2c; --plate-edge:#8a8a8a; --lcd:#aebaa9; --lcd-edge:#6f7b6c;
@@ -835,6 +947,16 @@ h3{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:.0
 .legend span{display:inline-flex;align-items:center;gap:8px}
 .legend i{display:inline-block;width:26px;height:0;border-top:4px solid}
 .legend i.dash{border-top:2px dashed var(--sig)}
+.chouse{fill:url(#shapeGrad);stroke:var(--shape-edge);stroke-width:1.4}
+.cbrand{font-family:var(--f-body);font-size:8px;font-weight:700;letter-spacing:.06em;fill:var(--ink)}
+.lcd{stroke:#1b1f1c;fill:none} .lcd text{stroke:none} .lcd .lt{fill:#1b1f1c;stroke:none;font-family:var(--f-mono);font-weight:500}
+.lcd .lt.big{font-size:62px;font-weight:400;letter-spacing:-.04em} .lcd .lf{fill:#1b1f1c;stroke:none}
+.lcd .ic.off, .lcd .st{opacity:.08} .lcd .st.on{opacity:1}
+.lcd .cbox{stroke-opacity:.15} .lcd .cbox.on{stroke-opacity:1}
+.ckeys rect, .ckeys circle{fill:var(--plate);stroke:var(--shape-edge);stroke-width:1.2;filter:url(#cbevel)}
+.ckeys text{font-family:var(--f-body);font-size:10px;font-weight:600;text-anchor:middle;fill:var(--muted)}
+.ckeys .ckg{fill:none;stroke:var(--muted);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.ckeys #c-led{fill:#5b5f5c;stroke:none;filter:none} .ckeys #c-led.on{fill:#46d36f}
 .board{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .viewport{position:relative;overflow:hidden;touch-action:pan-y;box-shadow:inset 0 3px 14px var(--sh-inset)}
 .viewport.zoomed{touch-action:none}
@@ -857,7 +979,7 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .zlabel{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:.08em;fill:var(--muted)}
 .pipe{fill:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;transition:opacity .4s;filter:url(#tube)}
 .pipe.thin{stroke-width:3.4}
-.hot{stroke:var(--hot)} .ret{stroke:var(--ret)} .refr{stroke:var(--refr)} .dhw{stroke:var(--dhw)} .cold{stroke:var(--cold)} .coil{stroke:url(#coilGrad)}
+.hot{stroke:var(--hot)} .ret{stroke:var(--ret)} .refr{stroke:var(--refr)} .dhw{stroke:var(--dhw)} .cold{stroke:var(--cold)}
 .sig{fill:none;stroke:var(--sig);stroke-width:1.6;stroke-dasharray:5 4}
 .pwr{filter:url(#tube);fill:none;stroke:var(--elec);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
 .shape{fill:url(#shapeGrad);stroke:var(--shape-edge);stroke-width:1.3;transition:stroke .3s;filter:url(#bevel)}
@@ -883,6 +1005,15 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .fill-ink{fill:var(--ink)} .fill-muted{fill:var(--muted)}
 .wifi{stroke:var(--ink)}
 .coilheat{stroke:var(--off)}
+.hexwall{stroke:var(--muted);stroke-width:1.4;stroke-dasharray:3 2;fill:none}
+.nb circle{fill:var(--surface);stroke:var(--muted);stroke-width:.8;opacity:.9}
+.nb text{font-family:var(--f-mono);font-size:7.2px;fill:var(--muted);text-anchor:middle;pointer-events:none}
+svg.run-dhw .pump18{stroke:var(--accent);stroke-width:2.4}
+.asg{font-family:var(--f-mono);font-size:11px;font-weight:500;fill:var(--asg);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+.asg.sm{font-size:9.5px}
+.sensor.asgs{stroke:var(--asg);stroke-width:1.6}
+.tapfix{stroke:var(--ink)} .drops{stroke:var(--muted)}
+svg.run-tap .tapfix{stroke:var(--dhw);stroke-width:2.2} svg.run-tap .drops{stroke:var(--cold)}
 .tplate{fill:var(--plate);stroke:var(--plate-edge);stroke-width:1.2;filter:url(#bevel)}
 .tplate.heat{stroke:var(--hot);stroke-width:2}
 .tlcd{fill:var(--lcd);stroke:var(--lcd-edge);stroke-width:.6}
@@ -976,6 +1107,89 @@ section.flow b{color:var(--ink);font-weight:600}
 @media (prefers-reduced-motion:reduce){.fl,.fan,.coilheat,.s-vraag{animation:none!important}.comp,.pipe{transition:none}}
 `;
 
+
+/* hoofdscherm van de bediening op de cilinderunit (servicehandleiding 9-1, Main screen) */
+function ctrlSvg(x, y, w) {
+  return `
+<svg x="${x}" y="${y}" width="${w}" height="${w * 350 / 400}" viewBox="0 0 400 350" overflow="visible">
+  <defs>
+    <linearGradient id="lcdGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e4e8e2"/><stop offset="1" stop-color="#c5cbc4"/></linearGradient>
+    <filter id="cbevel" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" style="flood-opacity:var(--sh-raise)"/></filter>
+  </defs>
+  <rect class="chouse" x="8" y="6" width="384" height="336" rx="22" filter="url(#cbevel)"/>
+  <text class="cbrand" x="34" y="30">MITSUBISHI ELECTRIC</text>
+  <rect x="38" y="40" width="324" height="226" rx="4" fill="url(#lcdGrad)" stroke="#111" stroke-width="2"/>
+  <g class="lcd">
+    <!-- 15, 14: SD-kaart en menuslot (niet actief) -->
+    <g class="ic off"><rect x="140" y="47" width="14" height="16" rx="2" fill="none" stroke-width="1.4"/><text x="147" y="59" class="lt" font-size="6.5" text-anchor="middle">SD</text></g>
+    <g class="ic off"><rect x="160" y="52" width="13" height="11" rx="1.5" fill="none" stroke-width="1.4"/><path d="M162,52 v-3 a4.5,4.5 0 0 1 9,0 v3" fill="none" stroke-width="1.4"/></g>
+    <text class="lt" id="c-date" x="186" y="63" font-size="16"></text>
+    <text class="lt" id="c-time" x="354" y="63" font-size="16" text-anchor="end"></text>
+    <line x1="40" y1="70" x2="360" y2="70" stroke-width="2"/>
+
+    <!-- 10: tapwater (kader = nu actief), ECO -->
+    <rect class="cbox" id="c-dhwbox" x="48" y="80" width="58" height="50" fill="none" stroke-width="2.4"/>
+    <path class="lf" d="M58,98 h22 v-5 h4 v-4 h-12 v4 h4 v5 h-18 z M80,98 h12 a4,4 0 0 1 4,4 v8 h-6 v-6 h-10 z"/>
+    <path d="M93,114 v6 M96,116 v6 M90,117 v5" stroke-width="1.6"/>
+    <text class="lt" id="c-eco" x="64" y="126" font-size="8">ECO</text>
+    <!-- 9: ruimteverwarming zone 1 (kader = nu actief) -->
+    <path class="cbox" id="c-heatbox" d="M48,166 L77,142 L106,166 V196 H48 Z" fill="none" stroke-width="2.4"/>
+    <circle cx="77" cy="178" r="7" fill="none" stroke-width="2.2"/>
+    <path d="M77,165 v-4 M77,195 v-4 M64,178 h-4 M94,178 h-4 M68,169 l-3,-3 M86,169 l3,-3 M68,187 l-3,3 M86,187 l3,3" stroke-width="1.8"/>
+    <rect x="52" y="202" width="14" height="14" class="lf"/><text x="59" y="213" font-size="10" text-anchor="middle" fill="#e4e8e2">1</text>
+    <rect x="86" y="202" width="14" height="14" fill="none" stroke-width="1.4"/><text class="lt" x="93" y="213" font-size="10" text-anchor="middle">2</text>
+
+    <!-- 12: status tapwater (boven) en verwarming (onder): ▶ in bedrijf, II stand-by -->
+    <g id="c-dhw-run" class="st"><rect x="112" y="96" width="16" height="16" rx="2" class="lf"/><path d="M117,99 l7,5 l-7,5 z" fill="#e4e8e2"/></g>
+    <g id="c-dhw-sb" class="st"><rect x="112" y="96" width="16" height="16" rx="2" class="lf"/><path d="M116,99 v10 M124,99 v10" stroke="#e4e8e2" stroke-width="2.4"/></g>
+    <g id="c-heat-run" class="st"><rect x="112" y="170" width="16" height="16" rx="2" class="lf"/><path d="M117,173 l7,5 l-7,5 z" fill="#e4e8e2"/></g>
+    <g id="c-heat-sb" class="st"><rect x="112" y="170" width="16" height="16" rx="2" class="lf"/><path d="M116,173 v10 M124,173 v10" stroke="#e4e8e2" stroke-width="2.4"/></g>
+
+    <!-- bovenste rij: 11 vakantie, 1 legionella, 17 SG, 2 warmtepomp, 3 elektrisch element, 16 buffervat -->
+    <g class="ic off" id="c-hol"><rect x="146" y="82" width="24" height="18" rx="3" class="lf"/><circle cx="168" cy="98" r="6" fill="#e4e8e2" stroke-width="1.4"/><path d="M168,94 v4 h3" stroke-width="1.2"/></g>
+    <g class="ic" id="c-leg"><path d="M182,84 h18 v16 a9,4 0 0 1 -18,0 z" fill="none" stroke-width="1.8"/><path d="M186,92 h3 v3 h3 v3 h-3 z" class="lf"/></g>
+    <g class="ic off" id="c-sg"><rect x="208" y="82" width="22" height="20" rx="3" class="lf"/><text x="219" y="97" font-size="10" text-anchor="middle" fill="#e4e8e2">SG</text></g>
+    <g class="ic" id="c-hp"><rect x="238" y="82" width="34" height="20" rx="2" class="lf"/>
+      <path d="M244,86 v12 M250,86 v12 M256,86 v12 M262,86 v12" stroke="#e4e8e2" stroke-width="2.6"/><path d="M268,84 v16" stroke="#e4e8e2" stroke-width="1"/></g>
+    <g class="ic" id="c-bh"><rect x="280" y="82" width="32" height="20" rx="2" class="lf"/><path d="M299,84 l-8,9 h5 l-3,8 l9,-10 h-5 l3,-7 z" fill="#e4e8e2"/></g>
+    <g class="ic off" id="c-buf"><rect x="320" y="82" width="32" height="20" rx="2" class="lf"/></g>
+
+    <!-- 13: huidige kamer- en vattemperatuur -->
+    <path d="M154,128 l9,-8 l9,8 v10 h-18 z" fill="none" stroke-width="1.6"/><path d="M163,127 v6" stroke-width="2"/>
+    <text class="lt" id="c-room" x="178" y="139" font-size="17"></text>
+    <path d="M258,121 h14 v15 a7,3 0 0 1 -14,0 z" class="lf"/>
+    <text class="lt" id="c-tank" x="278" y="139" font-size="17"></text>
+
+    <!-- 4: doeltemperatuur; bij Curve de stooklijn als symbool -->
+    <path d="M156,168 l5,-8 l5,8 z M156,174 l5,8 l5,-8 z" class="lf"/>
+    <g id="c-curveic"><path d="M150,212 h6 l14,-12 h6" fill="none" stroke-width="2.4"/><path d="M150,214 h26" stroke-width="1.2"/></g>
+    <text class="lt big" id="c-big" x="300" y="222" text-anchor="end"></text>
+    <text class="lt" x="304" y="186" font-size="18">°</text><text class="lt" x="314" y="220" font-size="30">C</text>
+    <text class="lt" id="c-bigsub" x="190" y="234" font-size="8"></text>
+
+    <!-- functietoetsen in het scherm -->
+    <rect x="44" y="240" width="72" height="22" rx="3" class="lf"/><text x="80" y="256" font-size="11" text-anchor="middle" fill="#e4e8e2">Z1⇄Z2</text>
+    <rect x="122" y="240" width="74" height="22" rx="3" class="lf"/><path d="M150,251 h18" stroke="#e4e8e2" stroke-width="2.4"/>
+    <rect x="202" y="240" width="74" height="22" rx="3" class="lf"/><path d="M230,251 h18 M239,242 v18" stroke="#e4e8e2" stroke-width="2.4"/>
+    <rect x="282" y="240" width="74" height="22" rx="3" class="lf"/><rect x="311" y="244" width="11" height="13" fill="none" stroke="#e4e8e2" stroke-width="1.4"/><path d="M317,253 l6,-5" stroke="#e4e8e2" stroke-width="1.6"/>
+  </g>
+  <!-- fysieke toetsen -->
+  <g class="ckeys">
+    <rect x="44" y="276" width="72" height="16" rx="3"/><rect x="122" y="276" width="74" height="16" rx="3"/>
+    <rect x="202" y="276" width="74" height="16" rx="3"/><rect x="282" y="276" width="74" height="16" rx="3"/>
+    <text x="80" y="288">F1</text><text x="159" y="288">F2</text><text x="239" y="288">F3</text><text x="319" y="288">F4</text>
+    <circle cx="70" cy="318" r="13"/><circle cx="112" cy="318" r="13"/><circle cx="154" cy="318" r="13"/>
+    <path d="M64,313 h12 M64,318 h12 M64,323 h12" class="ckg"/>
+    <path d="M118,314 a7,7 0 1 1 -7,-3 m0,0 l-2,-3 m2,3 l-3,2" class="ckg"/>
+    <path d="M147,318 l5,5 l9,-10" class="ckg"/>
+    <circle cx="322" cy="316" r="20"/><path d="M322,307 v8 M315,311 a10,10 0 1 0 14,0" class="ckg"/>
+    <rect id="c-led" x="272" y="314" width="14" height="5" rx="2.5"/>
+  </g>
+</svg>`;
+}
+
 const TEMPLATE = (floors, curve) => `
 <div id="root">
   <div class="bar">
@@ -1021,7 +1235,7 @@ const TEMPLATE = (floors, curve) => `
       <div><span class="n">1</span><p><b>Buitenunit</b> haalt warmte uit de buitenlucht. De compressor pompt die warmte op naar een hogere temperatuur in het koudemiddel.</p></div>
       <div><span class="n">2</span><p><b>Platenwisselaar</b> in de cilinderunit: het hete koudemiddel condenseert en geeft zijn warmte af aan het water. Water en koudemiddel raken elkaar nooit.</p></div>
       <div><span class="n">3</span><p><b>Pomp 1</b> stuurt het warme water via de booster heater langs THW1 naar de <b>3-wegklep</b>.</p></div>
-      <div><span class="n">4</span><p>De klep kiest: óf door de <b>spiraal in het vat</b> (tapwater), óf naar de <b>verdelers</b> van de vloerverwarming. Nooit beide tegelijk; tapwater gaat voor.</p></div>
+      <div><span class="n">4</span><p>De klep kiest: óf naar de <b>platenwisselaar voor tapwater</b> (16), waar de sanitaire pomp het water uit het vat langs pompt, óf naar de <b>verdelers</b> van de vloerverwarming. Nooit beide tegelijk; tapwater gaat voor.</p></div>
       <div><span class="n">5</span><p>Het afgekoelde water komt terug langs <b>THW2</b> en het filter, en gaat opnieuw de platenwisselaar in.</p></div>
     </section>
     <p class="note">Ecodan Dashboard ${ECODASH_VERSION}</p>
@@ -1235,6 +1449,14 @@ function mountDashboard(host, root) {
     setT("v-buiten", deg(X.buiten));
     setT("v-freq", X.freq > 0 ? fmt(X.freq, 0) + " Hz" : X.compByMeter ? "draait" : X.freq == null ? "–" : "0 Hz", X.compRun ? "" : "off");
     setT("v-cond", deg(X.cond), X.compRun ? "" : "off");
+    setT("v-th2", deg(X.th2), X.compRun ? "" : "off");
+    setT("v-heat", !(X.heatNow > 0) ? "" : `${fmt(X.heatNow / 1000, 1)} kW warmte`, X.heatNow > 0 ? "" : "off");
+    const sv = (k, d = 0, u = "") => { const v = num(R[k]); return v == null ? null : fmt(v, d) + u; };
+    const line = (...a) => a.filter(x => x[1] != null).map(x => x[0] + " " + x[1]).join(" · ");
+    setT("v-out1", line(["persgas", sv("discharge", 0, " °C")], ["zuiggas", sv("ou_suction", 1, " °C")]), X.compRun ? "" : "off");
+    setT("v-out2", line(["ventilator", sv("fan", 0, " rpm")], ["starts", sv("starts")]), X.compRun ? "" : "off");
+    setT("v-out3", line(["pomp 1 stand", sv("pump_speed")], ["", sv("pump_w", 0, " W")]).replace(" ·  ", " · "), X.pump1 ? "" : "off");
+    setT("v-in1", X.vraagSrc === "signaal" ? `IN1 warmtevraag: ${X.vraag ? "aan" : "uit"}` : "", X.vraag ? "hotv" : "off");
     setT("v-defrost", X.defrost ? "ontdooien" : "", "warnv");
     setT("v-bh1", onoff(X.bh1), X.bh1 ? "hotv" : "off");
     setT("v-pump1", onoff(X.pump1), X.pump1 ? "" : "off");
@@ -1278,6 +1500,31 @@ function mountDashboard(host, root) {
         if (tx) tx.textContent = v?.t == null ? "–" : fmt(v.t, 1) + " °C" + (isFinite(v.sp) ? ` → ${fmt(v.sp, 1)}` : "");
       });
     });
+
+    // hoofdscherm bediening
+    {
+      const now = new Date(), cl = (sel, on) => { const el = $(sel); if (el) el.classList.toggle("on", !!on); };
+      setT("c-date", now.toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" }).replace(".", ""));
+      setT("c-time", now.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" }));
+      const dhwOn = X.mode === "tapwater" || X.mode === "legionella", heatOn = X.mode === "verwarming";
+      cl("#c-dhwbox", dhwOn); cl("#c-heatbox", heatOn);
+      cl("#c-dhw-run", dhwOn); cl("#c-dhw-sb", !dhwOn); cl("#c-heat-run", heatOn); cl("#c-heat-sb", !heatOn);
+      $("#c-leg")?.classList.toggle("off", X.mode !== "legionella");
+      $("#c-hp")?.classList.toggle("off", !X.compRun);
+      $("#c-bh")?.classList.toggle("off", !(X.bh1 || X.imm));
+      $("#c-eco")?.setAttribute("opacity", /eco/i.test(X.whMode || "") ? 1 : 0.08);
+      $("#c-hol")?.classList.toggle("off", !bin(R.holiday));
+      // kamertemperatuur: de voeler in het bedieningspaneel (Zone 1 Room Temp), anders de woonkamer
+      const zr = num(R.z1_room), wk = R.floors.flatMap((f, fi) => f.kamers.map((k, j) => [k.naam, X.rooms[fi]?.[j]?.t])).find(([n, t]) => /woonkamer/i.test(n) && t != null);
+      setT("c-room", zr != null ? fmt(zr, 0) + "°C" : wk ? fmt(wk[1], 0) + "°C" : "–");
+      setT("c-tank", X.tank == null ? "–" : fmt(X.tank, 0) + "°C");
+      const curveOn = X.opmode == null || /curve/i.test(X.opmode);
+      $("#c-curveic")?.setAttribute("opacity", curveOn ? 1 : 0.08);
+      const big = X.z1sp ?? (curveOn ? X.curveTarget : null);
+      setT("c-big", big == null ? "–" : fmt(big, 0));
+      setT("c-bigsub", big == null ? "" : X.z1sp != null ? "doel aanvoer (FTC6)" : "doel aanvoer (stooklijn)");
+      cl("#c-led", X.buiten != null);
+    }
 
     // kop
     const ML = { rust: X.opk === "frost" ? "vorstbeveiliging" : "in rust", verwarming: "ruimteverwarming", tapwater: "tapwater",
