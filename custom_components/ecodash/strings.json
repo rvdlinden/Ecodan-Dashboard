@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Ecodan Dashboard",
-        "description": "Adds a panel to the sidebar with a live installation diagram of the Ecodan heat pump. The MELCloud entities are detected automatically; the entity prefix and manual mapping can be set later via Configure.",
+        "description": "Adds a panel to the sidebar with a live installation diagram of the Ecodan heat pump. The Asgard (ESPHome) entities are detected automatically; the entity prefix and manual mapping can be set later via Configure.",
         "data": {
           "sidebar_title": "Sidebar title",
           "sidebar_icon": "Icon",
@@ -50,11 +50,11 @@
           "stooklijn_verschuiving": "Heating curve: shift"
         },
         "data_description": {
-          "prefix": "The part between the domain and the sensor name, e.g. technische_ruimte_ecodan for sensor.technische_ruimte_ecodan_tanktemperatuur.",
+          "prefix": "The part between the domain and the sensor name, e.g. technische_ruimte_ecodan for sensor.technische_ruimte_ecodan_dhw_current_temp.",
           "klep_aan_is_tapwater": "Turn this off if the diagram shows heating while the tank is being heated.",
           "overrides": "E.g. water_heater: water_heater.ecodan. Leave empty for automatic detection. See the README for all keys.",
           "thema": "Default for everyone. The sun/moon button in the panel overrides it per device.",
-          "stooklijn_buiten_koud": "Copy these from the Ecodan display (Heating → Compensation curve). The panel cannot read them from MELCloud. At this outdoor temperature and colder, the flow temperature is the value below.",
+          "stooklijn_buiten_koud": "Copy these from the Ecodan display (Heating → Compensation curve). The heat pump does not report these points. At this outdoor temperature and colder, the flow temperature is the value below.",
           "stooklijn_buiten_warm": "At this outdoor temperature and warmer, the flow temperature is the value below. Must be warmer than the cold point.",
           "stooklijn_middenpunt": "Only if an adjustment point is set on the display; it must lie between the cold and the warm point.",
           "stooklijn_verschuiving": "Shift of the whole curve, as set on the display (−5 to +5 °C). Usually 0.",

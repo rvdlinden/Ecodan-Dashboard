@@ -1,42 +1,85 @@
 /* =====================================================================
  * Ecodan Dashboard: zijbalk-panel voor Home Assistant
- * Installatieschema van de Ecodan-warmtepomp met live waarden uit de
- * MELCloud-integratie en de kWh-meters in de meterkast. Alle data via de
+ * Installatieschema van de Ecodan-warmtepomp met live waarden van de
+ * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.8.5";
+const ECODASH_VERSION = "1.9.0";
 
 /* ------------------------- entiteiten ------------------------------ */
-// Per sleutel: domein en mogelijke achtervoegsels na het voorvoegsel (eerste = jouw installatie).
+// Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
 // Wordt een entiteit niet gevonden onder het voorvoegsel, dan zoekt het panel op achtervoegsel
 // binnen alle entiteiten met "ecodan" in de naam. Overrides gaan altijd voor.
 const ENT = {
-  buiten:      { d: "sensor", s: ["buitentemperatuur", "outside_temperature", "outdoor_temperature"] },
-  freq:        { d: "sensor", s: ["heat_pump_frequency", "compressor_frequency"] },
-  cond:        { d: "sensor", s: ["condensing_temperature"] },
-  aanvoer:     { d: "sensor", s: ["aanvoertemperatuur", "flow_temperature"] },
-  retour:      { d: "sensor", s: ["retourtemperatuur", "return_temperature"] },
-  pump1:       { d: "binary_sensor", s: ["water_pump_1"] },
+  // buitenunit
+  buiten:      { d: "sensor", s: ["outside_temp"] },
+  freq:        { d: "sensor", s: ["compressor_frequency"] },
+  comp:        { d: "binary_sensor", s: ["compressor"] },
+  defrost:     { d: "binary_sensor", s: ["defrost"] },
+  cond:        { d: "sensor", s: ["refrigerant_condensing_temp"] },
+  th2:         { d: "sensor", s: ["refrigerant_liquid_temp"] },
+  discharge:   { d: "sensor", s: ["discharge_temp"] },
+  superheat:   { d: "sensor", s: ["discharge_superheat_temp"] },
+  subcool:     { d: "sensor", s: ["subcooling_temp"] },
+  ou_liquid:   { d: "sensor", s: ["outside_unit_liquid_pipe_1_temp"] },
+  ou_2phase:   { d: "sensor", s: ["outside_unit_two_phase_pipe_temp"] },
+  ou_suction:  { d: "sensor", s: ["outside_unit_suction_pipe_temp"] },
+  ou_heatsink: { d: "sensor", s: ["outside_unit_heatsink_temp"] },
+  ou_surface:  { d: "sensor", s: ["outside_unit_compressor_surface_temp"] },
+  fan:         { d: "sensor", s: ["fan_speed"] },
+  starts:      { d: "sensor", s: ["accumulated_compressor_starts"] },
+  runtime:     { d: "sensor", s: ["operating_runtime"] },
+  // waterkant
+  aanvoer:     { d: "sensor", s: ["feed_temp"] },
+  retour:      { d: "sensor", s: ["return_temp"] },
+  delta_t:     { d: "sensor", s: ["delta_t"] },
+  flow:        { d: "sensor", s: ["flow_rate"] },
+  pump1:       { d: "binary_sensor", s: ["water_pump_status", "water_pump"] },
+  pump_speed:  { d: "sensor", s: ["pump_speed"] },
+  pump_w:      { d: "sensor", s: ["pump_consumption"] },
+  pump_fb:     { d: "sensor", s: ["pump_feedback_status"] },
   klep:        { d: "binary_sensor", s: ["3_way_valve"] },
-  bh1:         { d: "binary_sensor", s: ["booster_heater_1"] },
-  tank:        { d: "sensor", s: ["tanktemperatuur", "tank_temperature", "tank_water_temperature"] },
+  bh1:         { d: "binary_sensor", s: ["booster_heater"] },
+  heatsrc:     { d: "sensor", s: ["heat_source"] },
+  // tapwater
+  tank:        { d: "sensor", s: ["dhw_current_temp"] },
+  tank2:       { d: "sensor", s: ["dhw_secondary_temp"] },
+  dhw_sp:      { d: "sensor", s: ["dhw_setpoint_value"] },
+  dhw_drop:    { d: "sensor", s: ["dhw_max_temp_drop"] },
+  dhw_mode:    { d: "select", s: ["dhw_mode"] },
+  leg_temp:    { d: "sensor", s: ["legionella_prevention_temp"] },
+  // regelaar en energie
+  opstate:     { d: "sensor", s: ["operation_mode"] },
+  z1_sp:       { d: "sensor", s: ["zone_1_setpoint_value"] },
+  z1_room:     { d: "sensor", s: ["zone_1_room_temp"] },
+  p_heat:      { d: "sensor", s: ["output_power"] },
+  p_est:       { d: "sensor", s: ["estimated_output_power"] },
+  cop_est:     { d: "sensor", s: ["estimated_cop"] },
+  dhw_prod:    { d: "sensor", s: ["dhw_delivered"] },
+  dhw_cons:    { d: "sensor", s: ["dhw_consumed"] },
+  dhw_cop:     { d: "sensor", s: ["dhw_cop"] },
+  heat_prod:   { d: "sensor", s: ["heating_delivered"] },
+  heat_cons:   { d: "sensor", s: ["heating_consumed"] },
+  heat_cop:    { d: "sensor", s: ["heating_cop"] },
+  day_prod:    { d: "sensor", s: ["estimated_total_daily_energy_produced"] },
+  day_cons:    { d: "sensor", s: ["reported_total_daily_energy_consumption"] },
+  fault:       { d: "sensor", s: ["fault_code"] },
+  ref_err:     { d: "sensor", s: ["refrigerant_error_code"] },
+  // Asgard zelf
+  wifi:        { d: "sensor", s: ["wifi_signal_db"] },
+  esp_temp:    { d: "sensor", s: ["esp_internal_temperature"] },
+  uptime:      { d: "sensor", s: ["esp_uptime"] },
+  esp_version: { d: "sensor", s: ["esp_version"] },
+  // niet aangesloten
+  mixing:      { d: "sensor", s: ["mixing_tank_temp"] },
+  z1_feed:     { d: "sensor", s: ["z1_feed_temp"] },
+  z1_return:   { d: "sensor", s: ["z1_return_temp"] },
+  mix_step:    { d: "sensor", s: ["mixing_valve_step_z1"] },
   imm:         { d: "binary_sensor", s: ["immersion_heater"] },
-  dhw_prod:    { d: "sensor", s: ["daily_hot_water_energy_produced"] },
-  dhw_cons:    { d: "sensor", s: ["daily_hot_water_energy_consumed"] },
-  dhw_cop:     { d: "sensor", s: ["sww_cop", "hot_water_cop"] },
-  heat_prod:   { d: "sensor", s: ["daily_heating_energy_produced"] },
-  heat_cons:   { d: "sensor", s: ["daily_heating_energy_consumed"] },
-  heat_cop:    { d: "sensor", s: ["verwarming_cop", "heating_cop"] },
-  e_prod:      { d: "sensor", s: ["energy_produced"] },
-  demand:      { d: "sensor", s: ["demand_percentage"] },
-  wifi:        { d: "sensor", s: ["signaalsterkte", "wifi_signal", "signal_strength", "rssi"] },
-  boiler:      { d: "binary_sensor", s: ["boiler"] },
-  boiler_flow: { d: "sensor", s: ["boiler_flow_temperature"] },
-  boiler_ret:  { d: "sensor", s: ["boiler_return_temperature"] },
-  mixing:      { d: "sensor", s: ["mixing_tank_temperature"] },
-  pump2:       { d: "binary_sensor", s: ["water_pump_2"] },
+  pump2:       { d: "binary_sensor", s: ["water_pump_2_status"] },
 };
-const MELCLOUD_KEYS = Object.keys(ENT).concat(["water_heater", "opmode"]);
+// Met deze entiteiten bepaalt het panel of de Asgard bereikbaar is en hoe recent de waarden zijn.
+const CORE_KEYS = ["buiten", "freq", "aanvoer", "retour", "tank", "flow", "opstate"];
 // Per kamer de slimme temperatuurmeter die naast de (domme) thermostaat hangt. Per verdieping de lussen op de
 // verdeler: met hoofdactuator zit er één aandrijving op de aanvoer en gaan alle lussen samen open of dicht,
 // anders heeft elke lus een eigen aandrijving tenzij actuator: false (dan alleen een handwiel).
@@ -54,17 +97,17 @@ const DEFAULT_FLOORS = [
 // dicht vanaf ROOM_HYST erboven, daartussen blijft de vorige stand staan (de thermostaat schakelt met hysterese).
 const ROOM_HYST = 0.2;        // °C
 const P_IDLE = 30;            // W: daaronder is een groep in stand-by (regelaar, wifi)
-// Boven dit vermogen op de groep van de buitenunit draaien compressor en ventilator. De kWh-meter reageert direct,
-// MELCloud geeft de frequentie pas na een paar minuten door; zo draait de ventilator meteen mee.
+// Boven dit vermogen op de groep van de buitenunit draaien compressor en ventilator. Vangnet voor als de frequentie
+// (nog) ontbreekt, bijvoorbeeld net na een herstart van de Asgard.
 const P_RUN = 150;
 // De watermeter meet al het water in huis. Alleen als het vat tegelijk afkoelt (er stroomt koud water in omdat er
-// warm water getapt wordt) loopt de stroom via het vat. 1 °C, omdat MELCloud THW5 in stappen van 0,5 °C meldt
-// en het vat in rust ook langzaam afkoelt.
-const TAP_DROP = 1.0;         // °C afkoeling van het vat ...
+// warm water getapt wordt) loopt de stroom via het vat. Het koude water komt onderin binnen, dus de onderste voeler
+// (THW5B) zakt snel; 0,5 °C is ruim boven de langzame afkoeling van het vat in rust.
+const TAP_DROP = 0.5;         // °C afkoeling van het vat ...
 const TAP_WIN = 15 * 60e3;    // ... binnen dit venster
 
 // Stooklijn zoals op het Ecodan-display: [buitentemperatuur, aanvoertemperatuur] per punt. Komt uit Configureren,
-// want MELCloud geeft de instelling niet door.
+// want de FTC6 geeft de punten niet door (wel het actuele aanvoerdoel, Zone 1 Setpoint Value).
 const DEFAULT_CURVE = { koud: [-7, 32], warm: [12, 24], midden: null, verschuiving: 0 };
 function curvePoints(c) {
   const ok = p => Array.isArray(p) && p.length === 2 && p.every(v => isFinite(v));
@@ -92,8 +135,7 @@ function resolveEntities(hass, cfg) {
     for (const s of suffixes) { const id = `${dom}.${pre ? pre + "_" : ""}${s}`; if (has(id)) return id; }
     for (const s of suffixes) {
       const c = ids.filter(id => id.startsWith(dom + ".") && id.endsWith("_" + s) && id.includes("ecodan"));
-      // zone-entiteiten ("Ecodan Huis") alleen als er niets anders is
-      c.sort((a, b) => a.includes("_huis_") - b.includes("_huis_") || a.length - b.length);
+      c.sort((a, b) => a.length - b.length);     // de kortste naam: total_dhw_consumed is niet dhw_consumed
       if (c.length) return c[0];
     }
     return null;
@@ -101,13 +143,8 @@ function resolveEntities(hass, cfg) {
   const r = {};
   for (const [k, e] of Object.entries(ENT)) r[k] = pick(ov[k]) || find(e.d, e.s);
 
-  // tapwaterbediening
-  r.water_heater = pick(ov.water_heater) || (has(`water_heater.${pre}`) ? `water_heater.${pre}` : null)
-    || ids.find(id => id.startsWith("water_heater.") && id.includes("ecodan"))
-    || (ids.filter(id => id.startsWith("water_heater.")).length === 1 ? ids.find(id => id.startsWith("water_heater.")) : null);
-  // operation mode van zone 1
-  r.opmode = pick(ov.opmode) || (has(`select.${pre}_huis_operation_mode`) ? `select.${pre}_huis_operation_mode` : null)
-    || ids.find(id => id.startsWith("select.") && id.includes("ecodan") && id.endsWith("operation_mode")) || null;
+  // regeling van zone 1 (Heat Compensation Curve, Heat Flow Temperature of Heat Target Temperature)
+  r.opmode = pick(ov.opmode) || find("select", ["selected_operating_mode"]);
 
   // kWh-meters in de meterkast
   const meter = (side) => ids.filter(id => id.startsWith("sensor.") && id.includes("ecodan") && id.includes(side));
@@ -132,7 +169,8 @@ function resolveEntities(hass, cfg) {
   // optioneel: tapwaterdebiet en warmtevraag
   r.tap = pick(ov.tapwater_debiet) || (has("sensor.meterkast_watermeter_water_gebruik") ? "sensor.meterkast_watermeter_water_gebruik"
     : ids.find(id => id.startsWith("sensor.") && id.includes("watermeter") && /_(water_gebruik|active_water_usage)$/.test(id)) || null);
-  r.vraag = pick(ov.warmtevraag);
+  // warmtevraag van de regelunit van de vloerverwarming op ingang IN1 van de FTC6
+  r.vraag = pick(ov.warmtevraag) || find("binary_sensor", ["in1_thermostat"]);
 
   // verdiepingen en kamers; thermostaten worden gezocht op kamernaam (climate.woonkamer of naam "Woonkamer")
   const floors = Array.isArray(ov.verdiepingen) && ov.verdiepingen.length ? ov.verdiepingen : DEFAULT_FLOORS;
@@ -175,12 +213,15 @@ function loopsOf(f) {
 }
 
 /* ------------------------- opmaak ---------------------------------- */
+const opShort = m => /curve/i.test(m) ? "stooklijn" : /flow/i.test(m) ? "vaste aanvoer" : /target|room/i.test(m) ? "kamertemperatuur" : m;
 const NF = {};
 const nf = d => NF[d] || (NF[d] = new Intl.NumberFormat("nl-NL", { minimumFractionDigits: d, maximumFractionDigits: d }));
 const fmt = (v, d = 1) => (v == null || !isFinite(v) ? "–" : nf(d).format(v).replace("-", "−"));
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const hhmm = t => new Date(t).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+const duur = sec => { const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+  return d ? `${d} d ${h} u` : h ? `${h} u ${m} min` : `${m} min`; };
 const dagTijd = t => new Date(t).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 /* ------------------------- SVG-schema ------------------------------ */
@@ -396,6 +437,7 @@ function schemaSvg(floors, curve) {
     </g>
     <circle class="fill-ink" cx="120" cy="228" r="7"/>
     <text class="t s" x="120" y="314" text-anchor="middle">ventilator + verdamper</text>
+    <text class="val sm" id="v-defrost" x="120" y="332" text-anchor="middle"></text>
   </g>
   <g class="comp" data-c="comp" data-also="meterOut" tabindex="0" role="button" aria-label="Compressor">
     <rect class="hit" x="196" y="200" width="74" height="130"/>
@@ -412,10 +454,10 @@ function schemaSvg(floors, curve) {
     <text class="val" id="v-buiten" x="252" y="152" text-anchor="middle"></text>
   </g>
 
-  <g class="comp" data-c="ftc" tabindex="0" role="button" aria-label="FTC6 regelaar en MELCloud wifi">
+  <g class="comp" data-c="ftc" tabindex="0" role="button" aria-label="FTC6 regelaar en Asgard">
     <rect class="shape" x="560" y="110" width="180" height="70" rx="6"/>
     <text class="t b" x="574" y="134">FTC6 regelaar</text>
-    <text class="t s" x="574" y="151">+ MELCloud wifi-adapter</text>
+    <text class="t s" x="574" y="151">+ Asgard (ESP32-S3)</text>
     <text class="val" id="v-wifi" x="574" y="170"></text>
     <path class="wifi" d="M707,140 a15,15 0 0 1 22,0 M711,145 a9,9 0 0 1 14,0" fill="none" stroke-width="1.8" stroke-linecap="round"/>
     <circle class="fill-ink" cx="718" cy="151" r="2.4"/>
@@ -472,6 +514,7 @@ function schemaSvg(floors, curve) {
     <path d="M493,325 l16,10 M509,325 l-16,10" stroke="var(--muted)" stroke-width="1.2"/>
     <rect class="shape" x="540" y="322" width="22" height="16" rx="8"/>
     <text class="t s" x="526" y="356" text-anchor="middle">filter · debiet</text>
+    <text class="val sm" id="v-flow" x="526" y="372" text-anchor="middle"></text>
   </g>
 
   <g class="comp" data-c="thw2" tabindex="0" role="button" aria-label="Retourvoeler THW2">
@@ -497,22 +540,27 @@ function schemaSvg(floors, curve) {
     <rect class="ghost" id="imm-shape" x="530" y="684" width="130" height="16" rx="3"/>
     <text class="t s" x="595" y="720" text-anchor="middle">dompelaar (niet ingebouwd)</text>
   </g>
-  <g class="comp" data-c="thw5" tabindex="0" role="button" aria-label="Tankvoeler THW5">
-    <rect class="hit" x="400" y="566" width="90" height="46"/>
-    <circle class="sensor" cx="472" cy="590" r="7"/>
-    <text class="t s" x="458" y="584" text-anchor="end">THW5</text>
-    <text class="val" id="v-tank" x="458" y="603" text-anchor="end"></text>
+  <g class="comp" data-c="thw5" tabindex="0" role="button" aria-label="Tankvoelers THW5A en THW5B">
+    <rect class="hit" x="400" y="496" width="90" height="46"/>
+    <circle class="sensor" cx="472" cy="520" r="7"/>
+    <text class="t s" x="458" y="514" text-anchor="end">THW5A</text>
+    <text class="val" id="v-tank2" x="458" y="533" text-anchor="end"></text>
+    <rect class="hit" x="400" y="606" width="90" height="46"/>
+    <circle class="sensor" cx="472" cy="630" r="7"/>
+    <text class="t s" x="458" y="624" text-anchor="end">THW5B</text>
+    <text class="val" id="v-tank" x="458" y="643" text-anchor="end"></text>
   </g>
 
   <g class="comp" data-c="unused" tabindex="0" role="button" aria-label="Niet aangesloten onderdelen">
     <rect class="hit" x="16" y="416" width="290" height="330"/>
     <text class="zlabel" x="32" y="442">NIET AANGESLOTEN</text>
     <text class="t s" x="32" y="460">entiteiten bestaan wel, maar meten niets</text>
-    <rect class="ghost" x="36" y="486" width="40" height="52" rx="4"/>
-    <path d="M56,526 c-9,-6 -6,-16 0,-22 c1,7 9,9 6,17 c-2,4 -4,5 -6,5z" fill="none" stroke="var(--off)" stroke-width="1.4"/>
-    <text class="t b" x="92" y="502">Externe cv-ketel</text>
-    <text class="t s" x="92" y="518">boiler · boiler flow/return</text>
-    <text class="val off" id="v-boiler" x="92" y="534"></text>
+    <polygon class="ghost" points="38,500 56,512 38,524"/>
+    <polygon class="ghost" points="74,500 56,512 74,524"/>
+    <polygon class="ghost" points="44,536 56,512 68,536"/>
+    <text class="t b" x="92" y="502">Mengklep zone 1</text>
+    <text class="t s" x="92" y="518">z1 feed/return · mixing valve step</text>
+    <text class="val off" id="v-z1mix" x="92" y="534"></text>
     <rect class="ghost" x="40" y="586" width="32" height="60" rx="12"/>
     <text class="t b" x="92" y="604">Mengvat / buffervat</text>
     <text class="t s" x="92" y="620">mixing tank temperature</text>
@@ -523,11 +571,11 @@ function schemaSvg(floors, curve) {
     <text class="t s" x="92" y="720">water pump 2</text>
     <text class="val off" id="v-pump2" x="92" y="736"></text>
   </g>
-  <g class="comp" data-c="absent" tabindex="0" role="button" aria-label="Uitgeschakelde entiteiten">
+  <g class="comp" data-c="absent" tabindex="0" role="button" aria-label="Niet in jouw installatie">
     <rect class="hit" x="24" y="752" width="274" height="46"/>
     <line x1="32" y1="756" x2="290" y2="756" stroke="var(--line)" stroke-width="1"/>
-    <text class="t b" x="32" y="774" style="fill:var(--muted)">Uitgeschakeld in Home Assistant</text>
-    <text class="t s" x="32" y="790">koeling · 2-wegklep · BH2 · BH2+ · pomp 3 en 4</text>
+    <text class="t b" x="32" y="774" style="fill:var(--muted)">Niet in jouw installatie</text>
+    <text class="t s" x="32" y="790">koeling · zone 2 · BH2 · pomp 3 en 4</text>
   </g>
 
   <rect class="zone" x="16" y="820" width="574" height="184" rx="8"/>
@@ -546,7 +594,7 @@ function schemaSvg(floors, curve) {
     <text class="val" id="v-pin" x="393" y="887"></text>
     <text class="t s" id="v-ein" x="495" y="887" text-anchor="end"></text>
   </g>
-  <text class="t s" x="32" y="926">Echte stroommeting in de meterkast, los van de schattingen in MELCloud.</text>
+  <text class="t s" x="32" y="926">Echte stroommeting in de meterkast, los van de schattingen van de FTC6.</text>
   <text class="t s" id="v-meter1" x="32" y="944"></text>
   <text class="t s" id="v-meter2" x="32" y="962"></text>
   ${curveSvg(curve)}
@@ -557,31 +605,31 @@ function schemaSvg(floors, curve) {
 
 /* ------------------------- onderdelen ------------------------------ */
 const C = {
-  outdoor: { name: "Buitenunit SUZ-SWM60 VA", where: "Tuin", text: "De eigenlijke warmtepomp. De ventilator blaast buitenlucht langs de verdamper; het koude koudemiddel neemt daar warmte op, ook als het buiten koud is. Een 6 kW-unit (SWM60). Er loopt geen water naar buiten, alleen twee koudemiddelleidingen. In het schema draait de ventilator mee zodra de compressor draait: volgens MELCloud (frequentie boven 0 Hz) of al eerder volgens de kWh-meter (meer dan 150 W op de groep van de buitenunit)." },
+  outdoor: { name: "Buitenunit SUZ-SWM60 VA", where: "Tuin", text: "De eigenlijke warmtepomp. De ventilator blaast buitenlucht langs de verdamper; het koude koudemiddel neemt daar warmte op, ook als het buiten koud is. Een 6 kW-unit (SWM60). Er loopt geen water naar buiten, alleen twee koudemiddelleidingen. In het schema draait de ventilator mee zodra de compressor draait: volgens de Asgard (frequentie boven 0 Hz) of volgens de kWh-meter (meer dan 150 W op de groep van de buitenunit). Bij vorst en hoge luchtvochtigheid ijst de verdamper aan; dan draait de unit even om en ontdooit hij met warmte uit het water ('Defrost'), wat het schema bij de ventilator meldt." },
   comp: { name: "Compressor", where: "In de buitenunit", text: "Het hart van de warmtepomp. Drukt het koudemiddel samen, waardoor het heet wordt. Het is een inverter: het toerental (in Hz) past zich aan de vraag aan. 0 Hz = uit." },
   th7: { name: "Buitenvoeler TH7", where: "Achterkant buitenunit", text: "Meet de buitentemperatuur. De regelaar gebruikt die voor de stooklijn: hoe kouder het buiten is, hoe warmer het water naar de vloeren gaat." },
   refr: { name: "Koudemiddelleidingen (R32)", where: "Tussen tuin en technische ruimte", text: "Twee koperen leidingen: een dikke gasleiding (heet gas naar binnen) en een dunne vloeistofleiding (terug naar buiten). Dit is een split-systeem: het koudemiddel komt tot in de cilinderunit. De paarse bolletjes lopen zodra de compressor draait; hoe hoger het toerental, hoe sneller." },
   hex: { name: "Platenwarmtewisselaar", where: "In de cilinderunit", text: "Hier wordt koudemiddel-warmte omgezet in warm water. Het hete koudemiddel condenseert (wordt weer vloeibaar) en geeft daarbij zijn warmte af aan het verwarmingswater dat er aan de andere kant langs stroomt." },
-  ftc: { name: "FTC6 regelaar + MELCloud wifi", where: "In de cilinderunit (achter het bedieningspaneel)", text: "Het brein. De FTC6 leest alle voelers, stuurt pomp, klep en heaters aan, berekent het energieverbruik en praat via de wifi-adapter met MELCloud. Home Assistant haalt alle waarden op uit MELCloud, niet rechtstreeks uit de unit. Daardoor lopen de waarden een paar minuten achter." },
+  ftc: { name: "FTC6 regelaar + Asgard", where: "In de cilinderunit (achter het bedieningspaneel)", text: "Het brein. De FTC6 leest alle voelers, stuurt pomp, klep en heaters aan en berekent het energieverbruik. De Asgard is een ESP32-S3 met ESPHome (esphome-ecodan-hp) op de CN105-aansluiting van de FTC6. Hij leest de waarden rechtstreeks uit de regelaar en geeft ze via de ESPHome-integratie binnen enkele seconden aan Home Assistant door, zonder cloud. Ook de buitenunit-waarden (persgas, zuiggas, ventilatortoerental) komen via de FTC6; op sommige buitenunits blijven die leeg." },
   bh1: { name: "Booster heater 1 (2 kW)", where: "In de aanvoerleiding, in de cilinderunit", text: "Een elektrisch verwarmingselement direct in het water. Springt bij als de warmtepomp het alleen niet redt: strenge vorst, ontdooien, of de wekelijkse legionella-run (vat naar ±60 °C). Dit is de dure route: 1 kWh stroom = 1 kWh warmte." },
   pump1: { name: "Pomp 1 (circulatiepomp)", where: "In de cilinderunit", text: "Ingebouwde pomp die het water rondpompt door de platenwisselaar en daarna naar het vat óf de vloeren. Staat de pomp uit, dan stroomt er niets en staan er in het schema geen bolletjes op de waterleidingen." },
   thw1: { name: "Aanvoervoeler THW1", where: "Aanvoerleiding, na booster heater", text: "Temperatuur van het water dat de unit verlaat. Bij vloerverwarming meestal 25–35 °C; bij tapwater maken hoger, tot ±55 °C." },
   valve: { name: "3-wegklep", where: "In de cilinderunit", text: "Wissel tussen twee bestemmingen. Stand 'verwarming': water gaat naar de vloerverwarming. Stand 'tapwater': water gaat door de spiraal in het vat. Het schema kleurt de actieve uitgang en dimt de tak die niet in gebruik is." },
-  filter: { name: "Filter en debietmeter", where: "Retourleiding, in de cilinderunit", text: "Het filter vangt vuil uit het verwarmingswater (onderdeel van het onderhoud). De debietmeter meet hoeveel liter per minuut er stroomt; voor de SWM60 hoort dat tussen 7,2 en 17,2 L/min te liggen. Deze waarde zit niet in de MELCloud-integratie." },
+  filter: { name: "Filter en debietmeter", where: "Retourleiding, in de cilinderunit", text: "Het filter vangt vuil uit het verwarmingswater (onderdeel van het onderhoud). De debietmeter meet hoeveel liter per minuut er stroomt; voor de SWM60 hoort dat tussen 7,2 en 17,2 L/min te liggen. De Asgard geeft het debiet door (Flow Rate); het staat in het schema onder filter · debiet." },
   thw2: { name: "Retourvoeler THW2", where: "Retourleiding, in de cilinderunit", text: "Temperatuur van het water dat terugkomt. Het verschil met de aanvoer (ΔT) laat zien hoeveel warmte er is afgegeven. Bij vloerverwarming is 3–7 °C verschil normaal." },
   tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit; het geeft zijn warmte af via de spiraal. De kleur in het vat volgt de tanktemperatuur." },
   coil: { name: "Spiraal in het vat", where: "In het tapwatervat", text: "Als de 3-wegklep op tapwater staat, stroomt het warme verwarmingswater bovenin de spiraal in, geeft zijn warmte af aan het vat en verlaat de spiraal afgekoeld rechtsonder. Daarom loopt de kleur van rood naar blauw." },
   imm: { name: "Dompelaar (immersion heater)", where: "Zou in het vat zitten", text: "Een optioneel elektrisch element direct in het tapwatervat. De standaard EHST20D-uitvoeringen hebben er geen; de entiteit bestaat omdat de regelaar het wel kán aansturen." },
-  thw5: { name: "Tankvoeler THW5", where: "Halverwege het vat", text: "Temperatuur van het tapwater. Zakt die onder de ingestelde waarde min de hysterese (vaak 5–10 °C), dan schakelt de warmtepomp naar tapwater. Tap je warm water, dan stroomt er onderin koud leidingwater bij en zakt deze temperatuur; daaraan herkent het panel dat het water via het vat loopt." },
+  thw5: { name: "Tankvoelers THW5A en THW5B", where: "Boven- en onderin het vat", text: "THW5B zit onderin en is de voeler waarop de FTC6 regelt (DHW Current Temp). Zakt die onder de ingestelde waarde min de toegestane daling (DHW Max Temp Drop), dan schakelt de warmtepomp naar tapwater. THW5A zit bovenin (DHW Secondary Temp) en laat zien hoe warm het water is dat naar de kranen gaat; boven is het vat warmer dan onder. Tap je warm water, dan stroomt er onderin koud leidingwater bij en zakt THW5B snel; daaraan herkent het panel dat het water via het vat loopt. Geeft THW5A vast 25,0 °C, dan is er geen bovenste voeler aangesloten." },
   cyl: { name: "Cilinderunit EHST20D-VM2D", where: "Technische ruimte", text: "Alles-in-één binnenunit: platenwisselaar, pomp, 3-wegklep, 2 kW booster heater, expansievat, regelaar en een 200 L tapwatervat in één kast. 'VM2' = 1-fase, 2 kW booster heater. De H in EHST staat voor alleen verwarmen: deze unit kan niet koelen." },
   manifold: { name: "Vloerverwarmingsverdelers", where: "Eén per verdieping", text: "Verdelen het warme water over de lussen van een verdieping: 5 op de begane grond, 5 op de 1e en 3 op de 2e verdieping. Elke lus is een slang die door één kamer (of een deel ervan) in de dekvloer loopt en afgekoeld terugkomt." },
   act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' die een lus open of dicht zetten, aangestuurd door de thermostaat via de regelunit. Op de begane grond en de 2e verdieping zit er één op de hoofdaanvoer van de verdeler: de thermostaat zet daar alle lussen tegelijk open of dicht. Op de 1e verdieping heeft elke slaapkamer een eigen aandrijving; die van de badkamer volgt de thermostaat van slaapkamer 1. De lus naar de overloop heeft geen aandrijving en staat altijd open. Lussen zonder aandrijving hebben alleen een handwiel (het rondje op de verdeler). De aandrijvingen zijn niet uit te lezen: het panel neemt aan dat een kraan open staat zodra de kamer 0,2 °C onder de ingestelde waarde zakt en weer dicht gaat 0,2 °C erboven. Een open kraan krijgt een rode rand en alleen door open lussen lopen bolletjes als de vloerverwarming draait." },
-  tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat (Möhlenhoff) opent de aandrijving(en) die op zijn kanaal van de regelunit zitten. In het display-icoon staat de ingestelde temperatuur uit Configureren, ernaast de gemeten temperatuur. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt, schat het panel uit gemeten tegen ingesteld: 0,2 °C eronder gaat de kraan open en kleurt het display-icoon rood, 0,2 °C erboven gaat hij weer dicht. De warmtevraag naar de FTC6 leidt het panel af uit de warmtepomp: draait die op ruimteverwarming, dan vraagt minstens één thermostaat warmte en kleurt het signaal naar de FTC6 rood." },
-  unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een hybride cv-ketel, een mengvat met extra zonepomp en meer. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat MELCloud ze altijd meestuurt. Voelers zonder sensor geven een vaste 25,0 °C." },
-  curve: { name: "Stooklijn (compensatiecurve)", where: "Instelling in de FTC6", text: "Met Operation mode Curve bepaalt de FTC6 de aanvoertemperatuur uit de buitentemperatuur (TH7): hoe kouder buiten, hoe warmer het water naar de vloeren. Tot en met het koude punt geldt de hoogste aanvoer, vanaf het warme punt de laagste, en daartussen loopt de lijn recht (via het aanpassingspunt als dat is ingesteld). De groene stip is de huidige buitentemperatuur op de lijn: de aanvoer waar de FTC6 nu op mikt. De rode stip is de werkelijke aanvoer (THW1) zodra de vloerverwarming draait. De punten komen niet uit MELCloud maar uit Configureren; pas ze daar aan als je de stooklijn op het Ecodan-display verandert." },
-  zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. In Home Assistant maakt MELCloud daar een apart apparaat voor ('Ecodan Huis'). Het apparaat 'Ecodan' is de unit zelf met het tapwater." },
-  absent: { name: "Uitgeschakelde entiteiten", where: "Komen niet voor in jouw installatie", text: "De MELCloud-integratie maakt voor elke uitgang van de FTC6 een entiteit aan, ook voor functies die jouw installatie niet heeft: koelen, een tweede booster-trap, extra zones en een los tapwatervat. Home Assistant heeft deze standaard uitgeschakeld en dat kan zo blijven." },
-  meterOut: { name: "kWh-meter buitenunit", where: "Meterkast", text: "Meet het werkelijke stroomverbruik van de groep naar de buitenunit: compressor en ventilator. Bij de gebruikelijke Ecodan-bedrading krijgt de cilinderunit zijn regelstroom (FTC6, wifi, pomp 1, 3-wegklep) via de buitenunit, dus dan telt dat verbruik hier mee. Dit is de meting om op te vertrouwen; de 'consumed'-waarden in MELCloud zijn schattingen van de FTC6. Boven 30 W lopen er gele bolletjes over de stroomkabel." },
+  tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat (Möhlenhoff) opent de aandrijving(en) die op zijn kanaal van de regelunit zitten. In het display-icoon staat de ingestelde temperatuur uit Configureren, ernaast de gemeten temperatuur. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt, schat het panel uit gemeten tegen ingesteld: 0,2 °C eronder gaat de kraan open en kleurt het display-icoon rood, 0,2 °C erboven gaat hij weer dicht. De warmtevraag naar de FTC6 (ingang IN1) leest het panel via de Asgard ('In1 Thermostat'); staat die aan, dan kleurt het signaal naar de FTC6 rood. Zonder die entiteit leidt het panel de vraag af uit de warmtepomp." },
+  unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een mengklep met eigen zonevoelers, een mengvat met extra zonepomp en een dompelaar. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat de Asgard ze altijd aanmaakt. Voelers zonder sensor geven een vaste 25,0 °C." },
+  curve: { name: "Stooklijn (compensatiecurve)", where: "Instelling in de FTC6", text: "Met de regeling op Heat Compensation Curve bepaalt de FTC6 de aanvoertemperatuur uit de buitentemperatuur (TH7): hoe kouder buiten, hoe warmer het water naar de vloeren. Tot en met het koude punt geldt de hoogste aanvoer, vanaf het warme punt de laagste, en daartussen loopt de lijn recht (via het aanpassingspunt als dat is ingesteld). De groene stip is de huidige buitentemperatuur op de lijn: de aanvoer waar de FTC6 volgens de ingestelde punten op mikt. De Asgard meldt ook het aanvoerdoel dat de FTC6 zelf berekent (Zone 1 Setpoint Value); dat staat erbij en hoort gelijk te zijn aan de lijn. De rode stip is de werkelijke aanvoer (THW1) zodra de vloerverwarming draait. De punten zelf geeft de FTC6 niet door; ze komen uit Configureren. Pas ze daar aan als je de stooklijn op het Ecodan-display verandert." },
+  zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. De Asgard meldt het aanvoerdoel van die zone (Zone 1 Setpoint Value) en de kamertemperatuur zoals de FTC6 die kent (Zone 1 Room Temp, van de voeler in het bedieningspaneel in de technische ruimte). Bij regeling op de stooklijn speelt die kamertemperatuur geen rol." },
+  absent: { name: "Niet in jouw installatie", where: "Komen niet voor in jouw installatie", text: "De Asgard-firmware kent ook entiteiten voor koelen, een tweede zone, een tweede booster-trap en pompen 3 en 4. Jouw installatie heeft die onderdelen niet; als ze in Home Assistant staan, kun je ze uitschakelen." },
+  meterOut: { name: "kWh-meter buitenunit", where: "Meterkast", text: "Meet het werkelijke stroomverbruik van de groep naar de buitenunit: compressor en ventilator. Bij de gebruikelijke Ecodan-bedrading krijgt de cilinderunit zijn regelstroom (FTC6, wifi, pomp 1, 3-wegklep) via de buitenunit, dus dan telt dat verbruik hier mee. Dit is de meting om op te vertrouwen; de 'consumed'-waarden van de Asgard zijn schattingen van de FTC6. Boven 30 W lopen er gele bolletjes over de stroomkabel." },
   meterIn: { name: "kWh-meter binnenunit", where: "Meterkast", text: "Meet de aparte groep naar de cilinderunit. Die voedt vooral de 2 kW booster heater (BH1). Die gaat aan bij de legionella-run: de warmtepomp brengt het vat naar ±50–55 °C en de booster heater duwt het laatste stuk naar 60 °C. Ook als back-up bij strenge vorst kan hij bijspringen. Op vol vermogen zie je hier ongeveer 2000 W." },
 };
 C.wh = C.tank;
@@ -589,86 +637,138 @@ C.wh = C.tank;
 /* ------------------------- entiteitenlijst ------------------------- */
 // k = sleutel in de resolver, c = onderdeel in het schema, x = uitleg, now(X) = interpretatie van de live waarde
 const onoff = v => v == null ? "–" : v ? "aan" : "uit";
+const daily = X => X.dailyFresh ? "" : `Deze waarde is sinds ${dagTijd(X.dailySince)} niet veranderd, dus hij hoort bij een eerdere dag. De FTC6 werkt de dagtotalen met vertraging bij.`;
 const G = [
-  { title: "Buitenunit", note: "Wat de buitenunit in de tuin meet en doet.", items: [
-    { k: "buiten", n: "Buitentemperatuur", c: "th7", now: X => X.buiten == null ? "" : X.buiten < 0
+  { title: "Buitenunit", note: "Wat de buitenunit in de tuin meet en doet. De FTC6 krijgt deze waarden van de buitenunit; op sommige modellen blijven de servicewaarden leeg.", items: [
+    { k: "buiten", n: "Outside Temp", c: "th7", now: X => X.buiten == null ? "" : X.buiten < 0
       ? "Vorst: de stooklijn vraagt een hoge aanvoertemperatuur en de booster heater kan bijspringen."
       : X.buiten < 7 ? "Koud: de stooklijn vraagt een hogere aanvoertemperatuur."
       : X.buiten < 16 ? "Mild weer: de stooklijn vraagt een lage aanvoertemperatuur." : "Warm: er is weinig of geen verwarmingsvraag." },
-    { k: "freq", n: "Heat pump frequency", c: "comp", now: X => X.compByMeter ? `MELCloud meldt nog 0 Hz, maar de kWh-meter van de buitenunit meet ${fmt(X.pOut, 0)} W: de compressor draait al. De frequentie volgt over een paar minuten.`
+    { k: "freq", n: "Compressor Frequency", c: "comp", now: X => X.compByMeter ? `De Asgard meldt 0 Hz, maar de kWh-meter van de buitenunit meet ${fmt(X.pOut, 0)} W: de compressor draait waarschijnlijk.`
       : !X.freq ? "0 Hz: de compressor staat stil."
       : `De compressor draait op ${fmt(X.freq, 0)} Hz` + (X.freq < 35 ? ": laag toerental, rustig modulerend en zuinig." : X.freq > 70 ? ": hoog toerental, grote vraag (tapwater of kou)." : ".") },
-    { k: "cond", n: "Condensing temperature", c: "hex", x: "Temperatuur waarbij het koudemiddel in de platenwisselaar condenseert, dus waar de warmte aan het water wordt afgegeven. Wordt gemeten in de buitenunit, maar hoort fysiek bij de platenwisselaar.",
-      now: X => !X.freq ? "Bij stilstand zakt het koudemiddel richting omgevingstemperatuur."
+    { k: "comp", n: "Compressor", c: "comp", x: "Aan/uit-melding van de compressor volgens de FTC6.", now: X => X.compBin == null ? "" : X.compBin ? "Aan." : "Uit." },
+    { k: "defrost", n: "Defrost", c: "outdoor", x: "Staat aan zolang de buitenunit ontdooit. De warmtepomp draait dan om en haalt even warmte uit het water; de aanvoer zakt kort.",
+      now: X => X.defrost ? "Aan: de verdamper wordt ontdooid. De aanvoer zakt tijdelijk; dat is normaal." : X.defrost == null ? "" : "Uit." },
+    { k: "cond", n: "Refrigerant Condensing Temp", c: "hex", x: "Temperatuur waarbij het koudemiddel in de platenwisselaar condenseert, dus waar de warmte aan het water wordt afgegeven. Wordt berekend uit de druk in de buitenunit, maar hoort fysiek bij de platenwisselaar.",
+      now: X => !X.compRun ? "Bij stilstand zakt het koudemiddel richting omgevingstemperatuur."
       : X.aanvoer != null && X.cond != null ? `${fmt(X.cond - X.aanvoer, 1)} °C boven de aanvoertemperatuur. Een paar graden is normaal; hoe kleiner, hoe zuiniger.` : "" },
+    { k: "th2", n: "Refrigerant Liquid Temp", c: "hex", x: "Voeler TH2 op de vloeistofleiding na de platenwisselaar: het gecondenseerde koudemiddel dat terug naar buiten gaat.",
+      now: X => X.compRun && X.th2 != null && X.retour != null ? `${fmt(X.th2 - X.retour, 1)} °C ten opzichte van de retour.` : "" },
+    { k: "discharge", n: "Discharge Temp", c: "comp", x: "Temperatuur van het hete gas direct na de compressor (persgas). Ruim boven de condensatietemperatuur; te hoog wijst op te weinig koudemiddel." },
+    { k: "superheat", n: "Discharge Superheat Temp", c: "comp", x: "Hoeveel het persgas warmer is dan de condensatietemperatuur. De buitenunit regelt hiermee het expansieventiel." },
+    { k: "subcool", n: "Subcooling Temp", c: "hex", x: "Hoeveel het vloeibare koudemiddel na de platenwisselaar onder de condensatietemperatuur is afgekoeld. Een paar graden is normaal." },
+    { k: "ou_suction", n: "Outside Unit Suction Pipe Temp", c: "outdoor", x: "Zuiggasleiding naar de compressor: het koudemiddel dat net warmte uit de buitenlucht heeft opgenomen." },
+    { k: "ou_2phase", n: "Outside Unit Two Phase Pipe Temp", c: "outdoor", x: "Leiding in de verdamper waar het koudemiddel half vloeibaar, half gas is: de verdampingstemperatuur. Ligt onder de buitentemperatuur." },
+    { k: "ou_liquid", n: "Outside Unit Liquid Pipe 1 Temp", c: "outdoor", x: "Vloeistofleiding in de buitenunit, vóór het expansieventiel." },
+    { k: "ou_surface", n: "Outside Unit Compressor Surface Temp", c: "comp", x: "Temperatuur van de compressorbehuizing." },
+    { k: "ou_heatsink", n: "Outside Unit Heatsink Temp", c: "comp", x: "Koelplaat van de inverterelektronica die het toerental van de compressor regelt." },
+    { k: "fan", n: "Fan Speed", c: "outdoor", x: "Toerental van de ventilator. Draait mee met de compressor; bij ontdooien staat hij stil." },
+    { k: "starts", n: "Accumulated Compressor Starts", c: "comp", x: "Teller van compressorstarts. Veel starts per dag (pendelen) is slecht voor de levensduur en het rendement." },
+    { k: "runtime", n: "Operating Runtime", c: "comp", x: "Totale draaitijd van de warmtepomp in uren." },
   ]},
   { title: "Waterkant cilinderunit", note: "Het verwarmingswater dat rondgaat tussen platenwisselaar, vat en vloeren.", items: [
-    { k: "aanvoer", n: "Aanvoertemperatuur", c: "thw1", now: X => !X.pump1 ? "De pomp staat stil: dit is stilstaand water in de unit (restwarmte), geen echte aanvoer."
+    { k: "aanvoer", n: "Feed Temp", c: "thw1", now: X => !X.pump1 ? "De pomp staat stil: dit is stilstaand water in de unit (restwarmte), geen echte aanvoer."
       : X.dhw ? "Water naar de spiraal in het vat." : "Water naar de vloerverwarming." },
-    { k: "retour", n: "Retourtemperatuur", c: "thw2", now: X => !X.pump1 || X.dT == null ? "De pomp staat stil, dus ΔT zegt nu niets."
+    { k: "retour", n: "Return Temp", c: "thw2", now: X => !X.pump1 || X.dT == null ? "De pomp staat stil, dus ΔT zegt nu niets."
       : `ΔT ${fmt(X.dT, 1)} °C` + (X.dhw ? "." : X.dT < 2 ? ": klein, de vloeren nemen weinig warmte af." : X.dT > 8 ? ": groot, veel afgifte of weinig debiet." : ": normaal voor vloerverwarming.") },
-    { k: "pump1", n: "Water pump 1", c: "pump1", now: X => X.pump1 ? "Aan: er stroomt water door de unit." : "Uit: er stroomt geen water." },
-    { k: "klep", n: "3-way valve", c: "valve", now: X => X.dhw ? "Klep staat op tapwater: het water gaat door de spiraal in het vat." : "Klep staat op ruimteverwarming (vloeren)." },
-    { k: "bh1", n: "Booster heater 1", c: "bh1", now: X => !X.bh1 ? "Uit: geen elektrische bijverwarming."
+    { k: "delta_t", n: "Delta T", c: "thw2", x: "Verschil tussen aanvoer (THW1) en retour (THW2), berekend door de Asgard." },
+    { k: "flow", n: "Flow Rate", c: "filter", x: "Debiet door de unit, gemeten door de debietmeter in de retour. Voor de SWM60 hoort dat tussen 7,2 en 17,2 L/min te liggen.",
+      now: X => X.flow == null ? "" : !X.flow ? "0 L/min: er stroomt geen water." : X.flow < 7.2 ? "Onder het minimum van 7,2 L/min: controleer filter en kranen." : X.flow > 17.2 ? "Boven het maximum van 17,2 L/min." : "Binnen het bereik van de SWM60." },
+    { k: "pump1", n: "Water Pump Status", c: "pump1", der: X => X.pump1, derSrc: "Flow Rate", now: X => X.pump1 ? "Aan: er stroomt water door de unit." : "Uit: er stroomt geen water." },
+    { k: "pump_speed", n: "Pump Speed", c: "pump1", x: "Stand van pomp 1 volgens de FTC6." },
+    { k: "pump_w", n: "Pump Consumption", c: "pump1", x: "Opgenomen vermogen van pomp 1 volgens de pomp zelf." },
+    { k: "pump_fb", n: "Pump Feedback Status", c: "pump1", x: "Terugmelding van pomp 1 aan de FTC6: Active, Warning of een storing." },
+    { k: "klep", n: "3-way Valve", c: "valve", der: X => X.opk == null ? null : X.dhw, derSrc: "Operation Mode", now: X => X.dhw ? "Klep staat op tapwater: het water gaat door de spiraal in het vat." : "Klep staat op ruimteverwarming (vloeren)." },
+    { k: "bh1", n: "Booster Heater", c: "bh1", der: X => X.bh1, derSrc: "Heat Source", now: X => !X.bh1 ? "Uit: geen elektrische bijverwarming."
       : X.dhw ? "Aan tijdens tapwater: waarschijnlijk de legionella-run (vat naar ±60 °C)."
       : "Aan tijdens verwarmen: de warmtepomp redt het alleen niet (vorst of ontdooien). Dit is dure warmte." },
+    { k: "heatsrc", n: "Heat Source", c: "bh1", x: "Waar de warmte nu vandaan komt volgens de FTC6: Heatpump, Booster Heater, Immersion Heater of een combinatie." },
   ]},
   { title: "Tapwater", note: "Het drinkwater in het vat voor kranen en douche.", items: [
-    { k: "tank", n: "Tanktemperatuur", c: "thw5", now: X => {
+    { k: "tank", n: "DHW Current Temp (THW5B)", c: "thw5", now: X => {
       if (X.tank == null) return "";
-      if (X.mode === "tapwater") return "Het vat wordt nu opgewarmd.";
+      if (X.mode === "tapwater" || X.mode === "legionella") return "Het vat wordt nu opgewarmd.";
       if (X.target == null) return "";
       const d = X.target - X.tank;
-      return d <= 0 ? "Het vat is op temperatuur." : d <= 8 ? `${fmt(d, 1)} °C onder het doel: binnen de marge (hysterese), de warmtepomp start nog niet.`
+      return d <= 0 ? "Het vat is op temperatuur." : d <= X.hyst ? `${fmt(d, 1)} °C onder het doel: binnen de toegestane daling van ${fmt(X.hyst, 0)} °C, de warmtepomp start nog niet.`
         : `${fmt(d, 1)} °C onder het doel: de warmtepomp schakelt binnenkort naar tapwater.`; } },
-    { k: "water_heater", n: "Ecodan (bediening tapwater)", c: "tank", x: "De bedienknop voor het tapwater. Hier stel je de gewenste vattemperatuur en de modus in. 'Huidige temperatuur' is dezelfde meting als Tanktemperatuur (THW5).",
-      now: X => X.target == null ? "" : `Modus ${esc(X.whMode || "–")}, doel ${fmt(X.target, 0)} °C.` },
-    { k: "tap", n: "Waterverbruik (watermeter)", c: "tank", x: `De watermeter in de meterkast meet al het water in huis, ook voor toilet en koude kranen. Het schema toont alleen stroming door het vat als het vat tegelijk minstens ${fmt(TAP_DROP, 1)} °C afkoelt binnen ${TAP_WIN / 60e3} minuten. Doordat MELCloud de tanktemperatuur met vertraging doorgeeft, start dat pas na een paar minuten; korte tapbeurten (handen wassen) zie je niet.`,
+    { k: "tank2", n: "DHW Secondary Temp (THW5A)", c: "thw5", now: X => fixedNo(X.tank2) || (X.tank2 != null && X.tank != null ? `Bovenin ${fmt(X.tank2 - X.tank, 1)} °C ${X.tank2 >= X.tank ? "warmer" : "kouder"} dan onderin.` : "") },
+    { k: "dhw_sp", n: "DHW Setpoint Value", c: "tank", x: "Gewenste temperatuur van het vat, zoals ingesteld op het bedieningspaneel." },
+    { k: "dhw_drop", n: "DHW Max Temp Drop", c: "thw5", x: "Hoeveel het vat onder de ingestelde waarde mag zakken voordat de warmtepomp het opnieuw opwarmt (hysterese)." },
+    { k: "dhw_mode", n: "DHW Mode", c: "tank", x: "Normal of Eco. In Eco warmt de warmtepomp het vat rustiger op: zuiniger, maar het duurt langer." },
+    { k: "leg_temp", n: "Legionella Prevention Temp", c: "tank", x: "Temperatuur waar het vat bij de legionella-run naartoe wordt gebracht. De booster heater duwt het laatste stuk." },
+    { k: "tap", n: "Waterverbruik (watermeter)", c: "tank", x: `De watermeter in de meterkast meet al het water in huis, ook voor toilet en koude kranen. Het schema toont alleen stroming door het vat als het vat onderin tegelijk minstens ${fmt(TAP_DROP, 1)} °C afkoelt binnen ${TAP_WIN / 60e3} minuten. Korte tapbeurten (handen wassen) zie je daardoor niet.`,
       now: X => !X.tapFlow ? "Er stroomt nu geen water." : X.hotDraw ? `Er wordt warm water getapt: het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld.` : "Er stroomt water, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan." },
   ]},
-  { title: "Regelaar, energie en verbinding", note: "Waarden die de FTC6 berekent of over zichzelf rapporteert.", items: [
-    { k: "dhw_prod", n: "Daily hot water energy produced", c: "ftc", x: "Warmte die vandaag in het tapwatervat is gestopt. Berekend door de FTC6 uit debiet × (aanvoer − retour); een goede schatting, geen geijkte meter.", now: X => X.dailyFresh ? "" : `Deze waarde is sinds ${dagTijd(X.dailySince)} niet veranderd, dus hij hoort bij een eerdere dag. MELCloud werkt de dagtotalen met vertraging bij.` },
-    { k: "dhw_cons", n: "Daily hot water energy consumed", c: "ftc", x: "Stroom die vandaag is verbruikt voor tapwater (compressor, pomp, eventueel heaters). Intern berekend.", now: X => X.dailyFresh ? "" : `Deze waarde is sinds ${dagTijd(X.dailySince)} niet veranderd, dus hij hoort bij een eerdere dag. MELCloud werkt de dagtotalen met vertraging bij.` },
-    { k: "dhw_cop", n: "SWW COP", c: "ftc", x: "COP voor sanitair warm water = geproduceerd ÷ verbruikt. Hoe hoger, hoe zuiniger. Tapwater haalt lager dan verwarming omdat het water heter moet (±50 °C).",
+  { title: "Regelaar en energie", note: "Waarden die de FTC6 berekent of over zichzelf rapporteert.", items: [
+    { k: "opstate", n: "Operation Mode", c: "ftc", x: "Wat de FTC6 nu doet: Off, Space Heating, Heating Water (tapwater), Legionella Prevention of Frost Protection.",
+      now: X => X.op == null ? "" : `${esc(X.op)}: ${{ off: "geen vraag, de warmtepomp staat in rust.", heat: "ruimteverwarming.", dhw: "het vat wordt opgewarmd.", leg: "de legionella-run.", frost: "vorstbeveiliging: de pomp houdt het water in beweging.", cool: "koelen." }[opKind(X.op)] || "onbekende stand."}` },
+    { k: "opmode", n: "Selected operating mode", c: "curve", x: "Hoe de FTC6 de aanvoertemperatuur bepaalt: Heat Compensation Curve (stooklijn op basis van de buitentemperatuur), Heat Flow Temperature (vaste aanvoertemperatuur) of Heat Target Temperature (op de kamertemperatuur van het bedieningspaneel). Het panel toont dit alleen; wijzigen kan hier bewust niet.",
+      now: X => X.opmode == null ? "" : /curve/i.test(X.opmode) ? "Stooklijn. Zo hoort het bij jouw installatie." : "Let op: niet op de stooklijn. Daardoor regelt de warmtepomp anders dan bedoeld." },
+    { k: "z1_sp", n: "Zone 1 Setpoint Value", c: "curve", x: "Het aanvoerdoel dat de FTC6 nu voor de vloerverwarming gebruikt. Bij de stooklijn volgt het uit de buitentemperatuur.",
+      now: X => X.z1sp == null || X.curveTarget == null ? "" : Math.abs(X.z1sp - X.curveTarget) < 1 ? "Komt overeen met de stooklijn uit Configureren." : `Wijkt ${fmt(X.z1sp - X.curveTarget, 1)} °C af van de stooklijn uit Configureren: kijk of de punten nog kloppen met het display.` },
+    { k: "z1_room", n: "Zone 1 Room Temp", c: "zone1", x: "Kamertemperatuur volgens de FTC6: de voeler in het bedieningspaneel in de technische ruimte. Speelt bij regeling op de stooklijn geen rol." },
+    { k: "vraag", n: "In1 Thermostat (warmtevraag)", c: "tstat", x: "Ingang IN1 van de FTC6: het aan/uit-signaal van de regelunit van de vloerverwarming. Aan zodra er ergens een thermostaat warmte vraagt.",
+      now: X => X.vraag ? "Aan: minstens één thermostaat vraagt warmte." : "Uit: geen warmtevraag van de vloeren." },
+    { k: "p_est", n: "Estimated Output Power", c: "hex", x: "Warmte die de warmtepomp nu levert, berekend door de Asgard uit debiet × ΔT.",
+      now: X => X.copNow == null ? "" : `Met het gemeten stroomverbruik is de COP nu ongeveer ${fmt(X.copNow, 1)}.` },
+    { k: "p_heat", n: "Output Power", c: "hex", x: "Geleverde warmte zoals de FTC6 die zelf meldt." },
+    { k: "cop_est", n: "Estimated COP", c: "ftc", x: "COP van de lopende run volgens de Asgard: geschatte warmte ÷ door de FTC6 gemelde stroom, ongeveer elke 5 minuten bijgewerkt. 0 zolang de compressor stilstaat." },
+    { k: "dhw_prod", n: "DHW Delivered", c: "ftc", x: "Warmte die vandaag in het tapwatervat is gestopt. Berekend door de FTC6 uit debiet × (aanvoer − retour); een goede schatting, geen geijkte meter.", now: daily },
+    { k: "dhw_cons", n: "DHW Consumed", c: "ftc", x: "Stroom die vandaag is verbruikt voor tapwater (compressor, pomp, eventueel heaters). Intern berekend.", now: daily },
+    { k: "dhw_cop", n: "DHW COP", c: "ftc", x: "COP voor sanitair warm water = geproduceerd ÷ verbruikt. Hoe hoger, hoe zuiniger. Tapwater haalt lager dan verwarming omdat het water heter moet (±50 °C).",
       now: X => X.dhw_cop ? (X.dhw_cop >= 2 ? "Normaal voor tapwater." : "Laag: misschien heeft de booster heater meegedraaid (legionella-run).") : "0: vandaag nog geen tapwater gemaakt." },
-    { k: "heat_prod", n: "Daily heating energy produced", c: "ftc", x: "Warmte die vandaag naar de vloerverwarming is gegaan.", now: X => X.dailyFresh ? "" : `Deze waarde is sinds ${dagTijd(X.dailySince)} niet veranderd, dus hij hoort bij een eerdere dag. MELCloud werkt de dagtotalen met vertraging bij.` },
-    { k: "heat_cons", n: "Daily heating energy consumed", c: "ftc", x: "Stroom die vandaag voor ruimteverwarming is verbruikt.", now: X => X.dailyFresh ? "" : `Deze waarde is sinds ${dagTijd(X.dailySince)} niet veranderd, dus hij hoort bij een eerdere dag. MELCloud werkt de dagtotalen met vertraging bij.` },
-    { k: "heat_cop", n: "Verwarming COP", c: "ftc", x: "COP voor ruimteverwarming. Bij vloerverwarming haalt een Ecodan buiten de strenge winter vaak 4 of hoger.",
+    { k: "heat_prod", n: "Heating Delivered", c: "ftc", x: "Warmte die vandaag naar de vloerverwarming is gegaan.", now: daily },
+    { k: "heat_cons", n: "Heating Consumed", c: "ftc", x: "Stroom die vandaag voor ruimteverwarming is verbruikt.", now: daily },
+    { k: "heat_cop", n: "Heating COP", c: "ftc", x: "COP voor ruimteverwarming. Bij vloerverwarming haalt een Ecodan buiten de strenge winter vaak 4 of hoger.",
       now: X => X.heat_cop ? (X.heat_cop >= 3.5 ? "Goed." : X.heat_cop >= 2.5 ? "Redelijk; bij kou is dit normaal." : "Laag: weinig gedraaid, of de booster heater sprong bij.") : "0: te weinig gedraaid om te berekenen." },
-    { k: "e_prod", n: "Energy produced", c: "ftc", x: "Lopende waarde van geleverde warmte. Staat op 0 zolang de compressor niets levert." },
-    { k: "demand", n: "Demand percentage", c: "ftc", x: "Waarschijnlijk de vraagbegrenzing uit MELCloud: hoeveel procent van het vermogen de warmtepomp maximaal mag gebruiken.",
-      now: X => X.demand == null ? "" : X.demand >= 100 ? "100 %: geen begrenzing." : `Begrensd op ${fmt(X.demand, 0)} %.` },
-    { k: "wifi", n: "Signaalsterkte", c: "ftc", x: "Wifi-ontvangst van de MELCloud-adapter. Beter dan −60 dBm is goed, slechter dan −75 dBm geeft verbindingsproblemen.",
-      now: X => X.wifi == null ? "" : X.wifi >= -60 ? "Uitstekend." : X.wifi >= -75 ? "Redelijk." : "Zwak: kans op verbindingsproblemen met MELCloud." },
-    { k: "opmode", n: "Operation mode (Ecodan Huis)", c: "curve", x: "Hoe de FTC6 de aanvoertemperatuur bepaalt: Room (op kamertemperatuur van het display), Flow (vaste aanvoertemperatuur) of Curve (stooklijn op basis van de buitentemperatuur). Het panel toont dit alleen; wijzigen kan hier bewust niet.",
-      now: X => X.opmode == null ? "" : /curve/i.test(X.opmode) ? "Curve = stooklijn. Zo hoort het bij jouw installatie." : "Let op: niet op Curve. Daardoor regelt de warmtepomp anders dan bedoeld." },
+    { k: "day_prod", n: "Estimated Total Daily Energy Produced", c: "ftc", x: "Warmte van vandaag volgens de Asgard (opgeteld uit Estimated Output Power)." },
+    { k: "day_cons", n: "Reported Total Daily Energy Consumption", c: "ftc", x: "Stroomverbruik van vandaag zoals de FTC6 het meldt (verwarming en tapwater samen)." },
+    { k: "fault", n: "Fault code", c: "ftc", x: "Storingscode van de FTC6, zoals op het display. 'No error' is goed.",
+      now: X => X.fault == null ? "" : X.faultOn ? "Er is een storing gemeld: zoek de code op in de servicehandleiding of op het display." : "Geen storing." },
+    { k: "ref_err", n: "Refrigerant error code", c: "ftc", x: "Melding van het koudemiddelcircuit: Normal, Error of Maintenance Error." },
   ]},
-  { title: "Stroommeting meterkast", note: "Je eigen kWh-meters: echte metingen, los van MELCloud.", items: [
+  { title: "Asgard", note: "De ESP32-S3 op de CN105 van de FTC6 die de waarden doorgeeft.", items: [
+    { k: "wifi", n: "WiFi Signal dB", c: "ftc", x: "Wifi-ontvangst van de Asgard. Beter dan −60 dBm is goed, slechter dan −75 dBm geeft verbindingsproblemen.",
+      now: X => X.wifi == null ? "" : X.wifi >= -60 ? "Uitstekend." : X.wifi >= -75 ? "Redelijk." : "Zwak: kans op verbindingsproblemen met de Asgard." },
+    { k: "uptime", n: "ESP Uptime", c: "ftc", x: "Hoe lang de Asgard draait sinds de laatste herstart. Begint dit vaak opnieuw, dan herstart hij (stroom, wifi of firmware)." },
+    { k: "esp_temp", n: "ESP Internal Temperature", c: "ftc", x: "Temperatuur van de ESP32-S3 zelf." },
+    { k: "esp_version", n: "ESP Version", c: "ftc", x: "Versie van de esphome-ecodan-hp-firmware op de Asgard." },
+  ]},
+  { title: "Stroommeting meterkast", note: "Je eigen kWh-meters: echte metingen, los van de schattingen van de FTC6.", items: [
     { k: "p_out", n: "Vermogen buitenunit", c: "meterOut", x: "Actueel opgenomen vermogen van de groep naar de buitenunit, gemeten in de meterkast.",
-      now: X => X.pOut == null ? "" : X.pOut < P_IDLE ? "Stand-by: dit is het rustverbruik van de elektronica, waarschijnlijk inclusief de FTC6 en wifi-adapter." : "De compressor draait: honderden tot ruim duizend watt is normaal." },
+      now: X => X.pOut == null ? "" : X.pOut < P_IDLE ? "Stand-by: dit is het rustverbruik van de elektronica, waarschijnlijk inclusief de FTC6 en de Asgard." : "De compressor draait: honderden tot ruim duizend watt is normaal." },
     { k: "p_in", n: "Vermogen binnenunit", c: "meterIn", x: "Actueel opgenomen vermogen van de aparte groep naar de cilinderunit, gemeten in de meterkast.",
       now: X => X.pIn == null ? "" : X.pIn < P_IDLE ? "De booster heater is uit." : X.pIn > 1500 ? "De booster heater staat aan (±2000 W)." : "Klein verbruik op de binnenunit-groep." },
     { k: "e_out", n: "Energie buitenunit (teller)", c: "meterOut", x: "Totaalteller van de kWh-meter. Het panel rekent hiermee het verbruik van vandaag uit (stand nu − stand om middernacht)." },
     { k: "e_in", n: "Energie binnenunit (teller)", c: "meterIn", x: "Totaalteller van de kWh-meter van de binnenunit-groep." },
   ]},
   { title: "Niet aangesloten", note: "Deze entiteiten bestaan, maar er hangt niets aan. Je kunt ze in Home Assistant uitschakelen.", items: [
-    { k: "boiler", n: "Boiler", c: "unused", unused: 1, x: "Stuursignaal voor een externe cv-ketel (hybride systeem). 'Boiler' betekent hier ketel, niet het tapwatervat.", now: X => X.boiler ? "Aan! Er is geen ketel, dus dit is onverwacht." : "Uit, en blijft uit: er is geen ketel." },
-    { k: "boiler_flow", n: "Boiler flow temperature", c: "unused", unused: 1, x: "Aanvoervoeler THWB1 van een externe ketel.", now: X => fixed25(X.v) },
-    { k: "boiler_ret", n: "Boiler return temperature", c: "unused", unused: 1, x: "Retourvoeler THWB2 van een externe ketel.", now: X => fixed25(X.v) },
-    { k: "mixing", n: "Mixing tank temperature", c: "unused", unused: 1, x: "Voeler THW10 in een mengvat (buffervat). Wordt gebruikt als het systeem met een extra zonepomp werkt.", now: X => fixed25(X.v) },
-    { k: "imm", n: "Immersion heater", c: "imm", unused: 1, x: "Uitgang voor een dompelaar (elektrisch element) in het tapwatervat.",
-      now: X => X.imm == null ? "Uitgeschakeld in Home Assistant. Bij de EHST20D-VM2D zit geen dompelaar, dus dat kan zo blijven."
+    { k: "z1_feed", n: "Z1 Feed Temp", c: "unused", unused: 1, x: "Aanvoervoeler THW6 achter een mengklep van zone 1.", now: X => fixed25(X.v) },
+    { k: "z1_return", n: "Z1 Return Temp", c: "unused", unused: 1, x: "Retourvoeler THW7 van zone 1 bij een mengklep.", now: X => fixed25(X.v) },
+    { k: "mix_step", n: "Mixing Valve Step z1", c: "unused", unused: 1, x: "Stand van een mengklep in zone 1. Zonder mengklep blijft dit 0." },
+    { k: "mixing", n: "Mixing Tank Temp", c: "unused", unused: 1, x: "Voeler THW10 in een mengvat (buffervat). Wordt gebruikt als het systeem met een extra zonepomp werkt.", now: X => fixed25(X.v) },
+    { k: "imm", n: "Immersion Heater", c: "imm", unused: 1, x: "Uitgang voor een dompelaar (elektrisch element) in het tapwatervat.",
+      now: X => X.imm == null ? "Niet gevonden. Bij de EHST20D-VM2D zit geen dompelaar, dus dat kan zo blijven."
         : X.imm ? "Aan! Onverwacht: bij de EHST20D-VM2D zit normaal geen dompelaar." : "Uit. Bij jouw model zit geen dompelaar, dus dit blijft altijd uit." },
-    { k: "pump2", n: "Water pump 2", c: "unused", unused: 1, x: "Extra pomp voor zone 1 (uitgang OUT2), alleen nodig bij een mengvat of een lange leiding.", now: X => X.pump2 ? "Aan: dan heeft de installateur wél een tweede pomp geplaatst." : "Uit." },
+    { k: "pump2", n: "Water Pump 2 Status", c: "unused", unused: 1, x: "Extra pomp voor zone 1 (uitgang OUT2), alleen nodig bij een mengvat of een lange leiding.", now: X => X.pump2 ? "Aan: dan heeft de installateur wél een tweede pomp geplaatst." : "Uit." },
   ]},
-  { title: "Uitgeschakeld in Home Assistant", note: "Deze entiteiten staan bij jou terecht uit. De regelaar kan ze aansturen, maar jouw installatie heeft de onderdelen niet.", items: [
-    { k: "dis-cool", dis: 1, n: "Daily cooling energy consumed/produced", c: "absent", x: "Stroomverbruik en geleverde koeling per dag.", now: () => "Niet van toepassing. De EHST20D verwarmt alleen (de H in EHST)." },
-    { k: "dis-2way", dis: 1, n: "2-way valve", c: "absent", x: "Uitgang voor een 2-wegklep.", now: () => "Niet aanwezig. Jouw unit gebruikt de ingebouwde 3-wegklep." },
-    { k: "dis-bh2", dis: 1, n: "Booster heater 2 en 2+", c: "absent", x: "Tweede trap van de booster heater, op grotere modellen.", now: () => "Bestaat niet bij jou: de VM2D heeft één trap van 2 kW." },
-    { k: "dis-pump34", dis: 1, n: "Water pump 3 en 4", c: "absent", x: "Pomp voor zone 2 en een tapwaterpomp voor een los vat.", now: () => "Niet aanwezig: één zone en een ingebouwd vat." },
-    { k: "dis-zone", dis: 1, n: "Ecodan Huis: thermostaat, flow, kamertemperatuur", c: "zone1", x: "De overige entiteiten van zone 1.", now: () => "Uitgeschakeld. De kamerthermostaten bepalen wánnéér er gestookt wordt, de stooklijn hoe warm." },
+  { title: "Niet in jouw installatie", note: "De Asgard-firmware kent deze functies, maar jouw installatie heeft de onderdelen niet.", items: [
+    { k: "dis-cool", dis: 1, n: "Cool Consumed / Delivered / COP", c: "absent", x: "Stroomverbruik en geleverde koeling per dag.", now: () => "Niet van toepassing. De EHST20D verwarmt alleen (de H in EHST)." },
+    { k: "dis-z2", dis: 1, n: "Zone 2", c: "absent", x: "Aanvoer, retour, doel en kamertemperatuur van een tweede zone.", now: () => "Niet aanwezig: de hele vloerverwarming is één zone." },
+    { k: "dis-bh2", dis: 1, n: "Booster Heater 2", c: "absent", x: "Tweede trap van de booster heater, op grotere modellen.", now: () => "Bestaat niet bij jou: de VM2D heeft één trap van 2 kW." },
+    { k: "dis-pump34", dis: 1, n: "Water Pump 3 en 4", c: "absent", x: "Pomp voor zone 2 en een tapwaterpomp voor een los vat.", now: () => "Niet aanwezig: één zone en een ingebouwd vat." },
   ]},
 ];
+// soort bedrijf uit de tekst van Operation Mode (de Engelse labels van de Asgard-firmware)
+function opKind(op) {
+  if (op == null) return null;
+  const o = String(op).toLowerCase();
+  return /legionel/.test(o) ? "leg" : /water|dhw/.test(o) ? "dhw" : /frost/.test(o) ? "frost" : /cool/.test(o) ? "cool"
+    : /heat/.test(o) ? "heat" : /^off$/.test(o) ? "off" : null;
+}
+function fixedNo(v) { return v != null && Math.abs(v - 25) < 0.05 ? "25,0 °C vast: er is geen bovenste voeler aangesloten." : ""; }
 function fixed25(v) { return v == null ? "" : Math.abs(v - 25) < 0.05 ? "25,0 °C vast: geen voeler aangesloten." : `${fmt(v, 1)} °C, niet de vaste 25,0 °C: misschien is er toch een voeler aangesloten.`; }
 
 /* ------------------------- stijl ----------------------------------- */
@@ -915,7 +1015,7 @@ const TEMPLATE = (floors, curve) => `
     <div class="now-box">
       <h2>Wat gebeurt er nu?</h2>
       <ul id="nowlist"></ul>
-      <p class="note">MELCloud stuurt de waarden met een paar minuten vertraging door; de kWh-meters in de meterkast zijn vrijwel direct. Daardoor kan het schema even een draaiende compressor tonen terwijl de meter al stand-by meet, of andersom.</p>
+      <p class="note">De Asgard leest de waarden rechtstreeks uit de FTC6 en geeft ze binnen enkele seconden door, net als de kWh-meters in de meterkast. Alleen de dagtotalen van energie en COP werkt de FTC6 met vertraging bij.</p>
     </div>
     <section class="flow" aria-label="Zo loopt de warmte">
       <div><span class="n">1</span><p><b>Buitenunit</b> haalt warmte uit de buitenlucht. De compressor pompt die warmte op naar een hogere temperatuur in het koudemiddel.</p></div>
@@ -947,6 +1047,7 @@ function mountDashboard(host, root) {
   const ok = s => s && s.state !== "unavailable" && s.state !== "unknown";
   const num = id => { const s = S(id); if (!ok(s)) return null; const v = parseFloat(s.state); return isFinite(v) ? v : null; };
   const bin = id => { const s = S(id); return ok(s) ? s.state === "on" : null; };
+  const txt = id => { const s = S(id); return ok(s) ? s.state : null; };
   const watt = id => { const v = num(id); if (v == null) return null; const u = S(id).attributes.unit_of_measurement; return u === "kW" ? v * 1000 : v; };
   const kwh = id => { const v = num(id); if (v == null) return null; const u = S(id).attributes.unit_of_measurement; return u === "Wh" ? v / 1000 : u === "MWh" ? v * 1000 : v; };
 
@@ -975,21 +1076,28 @@ function mountDashboard(host, root) {
   /* live waarden verzamelen */
   function collect() {
     const X = {};
-    for (const k of ["buiten", "freq", "cond", "aanvoer", "retour", "tank", "dhw_prod", "dhw_cons", "dhw_cop", "heat_prod", "heat_cons",
-                     "heat_cop", "e_prod", "demand", "wifi", "boiler_flow", "boiler_ret", "mixing"]) X[k] = num(R[k]);
-    for (const k of ["pump1", "klep", "bh1", "imm", "boiler", "pump2"]) X[k] = bin(R[k]);
-    X.dhw = X.klep == null ? false : (cfg.klep_aan_is_tapwater ? X.klep : !X.klep);
+    for (const k of ["buiten", "freq", "cond", "th2", "aanvoer", "retour", "flow", "pump_speed", "tank", "tank2", "dhw_drop", "leg_temp",
+                     "dhw_prod", "dhw_cons", "dhw_cop", "heat_prod", "heat_cons", "heat_cop", "wifi", "mixing", "z1_feed", "z1_return"]) X[k] = num(R[k]);
+    for (const k of ["pump1", "klep", "bh1", "imm", "pump2", "defrost"]) X[k] = bin(R[k]);
+    X.compBin = bin(R.comp);
+    X.op = txt(R.opstate); X.opk = opKind(X.op); X.src = txt(R.heatsrc);
+    X.fault = txt(R.fault); X.faultOn = X.fault != null && !/^(no error|no fault|normal|0+)$/i.test(X.fault.trim());
+    X.refErr = txt(R.ref_err); X.refErrOn = X.refErr != null && !/^(normal|unknown)$/i.test(X.refErr.trim());
+    // Zonder binaire sensoren: pomp uit het debiet, klep uit de bedrijfsmodus, booster en dompelaar uit de warmtebron.
+    if (X.pump1 == null) X.pump1 = X.flow != null ? X.flow > 0.5 : X.pump_speed != null ? X.pump_speed > 0 : null;
+    if (X.bh1 == null && X.src != null) X.bh1 = /booster/i.test(X.src);
+    if (X.imm == null && X.src != null) X.imm = /immersion/i.test(X.src);
+    X.dhw = X.klep != null ? (cfg.klep_aan_is_tapwater ? X.klep : !X.klep) : X.opk === "dhw" || X.opk === "leg";
     X.dT = X.aanvoer != null && X.retour != null ? X.aanvoer - X.retour : null;
-    const wh = S(R.water_heater);
-    X.target = ok(wh) ? parseFloat(wh.attributes.temperature ?? wh.attributes.target_temperature) : null;
-    if (!isFinite(X.target)) X.target = null;
-    X.whMode = ok(wh) ? (wh.attributes.operation_mode || wh.state) : null;
-    if (X.tank == null && ok(wh) && isFinite(parseFloat(wh.attributes.current_temperature))) X.tank = parseFloat(wh.attributes.current_temperature);
+    X.target = num(R.dhw_sp);
+    X.whMode = txt(R.dhw_mode);
+    X.hyst = X.dhw_drop > 0 ? X.dhw_drop : 8;
     const om = S(R.opmode); X.opmode = ok(om) ? om.state : null;
+    X.z1sp = num(R.z1_sp);
     X.pOut = watt(R.p_out); X.pIn = watt(R.p_in);
     X.eOutTot = kwh(R.e_out); X.eInTot = kwh(R.e_in);
     X.tapFlow = num(R.tap);
-    // afkoeling van het vat in het laatste venster, uit de bijgehouden THW5-historie
+    // afkoeling van het vat in het laatste venster, uit de bijgehouden THW5B-historie
     const ts = S(R.tank), th = st.tankHist;
     if (ok(ts)) { const t = Date.parse(ts.last_changed) || Date.now(), v = parseFloat(ts.state);
       if (isFinite(v) && (!th.length || th[th.length - 1].t !== t)) th.push({ t, v }); }
@@ -998,10 +1106,17 @@ function mountDashboard(host, root) {
     X.tankDrop = th.length && X.tank != null ? Math.max(...th.map(p => p.v)) - X.tank : 0;
     X.hotDraw = X.tapFlow > 0 && X.tankDrop >= TAP_DROP;
     X.curveTarget = X.buiten == null ? null : curveAt(CURVE, X.buiten);
-    X.compRun = X.freq > 0 || X.pOut > P_RUN;
-    X.compByMeter = X.compRun && !(X.freq > 0);                       // de meter ziet het al, MELCloud nog niet
+    X.compRun = X.freq > 0 || !!X.compBin || X.pOut > P_RUN;
+    X.compByMeter = X.compRun && !(X.freq > 0) && !X.compBin;         // alleen de kWh-meter ziet hem draaien
     const running = X.compRun || !!X.pump1;
-    X.mode = !running ? "rust" : X.dhw ? (X.bh1 ? "legionella" : "tapwater") : "verwarming";
+    X.leg = X.opk === "leg" || (X.dhw && !!X.bh1);
+    X.mode = !running ? "rust" : X.dhw ? (X.leg ? "legionella" : "tapwater") : "verwarming";
+    // warmte nu (kW) en de COP van dit moment met de gemeten stroom
+    const pe = watt(R.p_est), ph = watt(R.p_heat);
+    X.heatNow = pe != null ? pe : ph;
+    const pel = (X.pOut || 0) + (X.pIn || 0);
+    X.copNow = X.compRun && X.heatNow > 0 && pel > P_RUN ? X.heatNow / pel : null;
+    if (X.copNow != null && X.copNow > 8) X.copNow = null;
     // kamers
     // heat: de kraan van de kamer staat open. Bij een climate-entiteit uit hvac_action, anders afgeleid (zie ROOM_HYST);
     // null = onbekend (geen meting of geen ingestelde waarde)
@@ -1030,29 +1145,31 @@ function mountDashboard(host, root) {
     X.mTot = X.mOut != null || X.mIn != null ? (X.mOut || 0) + (X.mIn || 0) : null;
     X.prodTot = X.heat_prod != null || X.dhw_prod != null ? (X.heat_prod || 0) + (X.dhw_prod || 0) : null;
     X.consTot = X.heat_cons != null || X.dhw_cons != null ? (X.heat_cons || 0) + (X.dhw_cons || 0) : null;
-    // MELCloud werkt de dagtotalen met vertraging bij. Is geen ervan sinds middernacht veranderd, dan horen ze bij een
+    // De FTC6 werkt de dagtotalen met vertraging bij. Is geen ervan sinds middernacht veranderd, dan horen ze bij een
     // eerdere dag en zijn ze niet te vergelijken met wat de kWh-meters vandaag gemeten hebben.
     const mid = new Date(); mid.setHours(0, 0, 0, 0);
     const daily = ["heat_prod", "heat_cons", "dhw_prod", "dhw_cons"].map(k => S(R[k])).filter(ok);
     X.dailySince = daily.length ? Math.max(...daily.map(s => Date.parse(s.last_changed) || 0)) : null;
     X.dailyFresh = X.dailySince != null && X.dailySince >= mid.getTime();
     const cop = X.dailyFresh && X.prodTot != null && X.mTot > 0.05 ? X.prodTot / X.mTot : null;
-    X.copMeas = cop != null && cop <= 8 ? cop : null;   // hoger kan fysiek niet: dan lopen MELCloud en de meters uit de pas
+    X.copMeas = cop != null && cop <= 8 ? cop : null;   // hoger kan fysiek niet: dan lopen de FTC6 en de meters uit de pas
     X.copMel = X.prodTot != null && X.consTot > 0.2 ? X.prodTot / X.consTot : null;
     return X;
   }
 
   const unitOf = k => { const id = R[k]; const s = S(id); return s?.attributes?.unit_of_measurement || ""; };
   function valueHtml(e, X) {
-    if (e.dis) return `<span class="pill unused">uitgeschakeld</span>`;
+    if (e.dis) return `<span class="pill unused">n.v.t.</span>`;
     const id = R[e.k], s = S(id);
+    if (!id && e.der && e.der(X) != null) return `<span class="pill${e.der(X) ? " on" : ""}">${e.der(X) ? "aan" : "uit"}</span> <span class="unit">afgeleid</span>`;
     if (!id) return e.unused ? `<span class="pill unused">uitgeschakeld</span>` : `<span class="pill missing">niet gevonden</span>`;
     if (!ok(s)) return `<span class="pill missing">${s ? s.state : "ontbreekt"}</span>`;
     if (id.startsWith("binary_sensor.")) return `<span class="pill${s.state === "on" ? " on" : ""}${e.unused ? " unused" : ""}">${s.state === "on" ? "aan" : "uit"}</span>`;
-    if (id.startsWith("water_heater.")) return `${esc(X.whMode || s.state)} · doel ${fmt(X.target, 0)} <span class="unit">°C</span>`;
-    const v = parseFloat(s.state);
-    if (!isFinite(v)) return esc(s.state);
-    const u = unitOf(e.k), d = /kWh|COP/.test(u) || /cop|prod|cons/.test(e.k) ? 2 : u === "°C" || /\/min/i.test(u) ? 1 : u === "W" ? 0 : (Math.abs(v) < 10 && v % 1 ? 2 : 0);
+    const v = Number(s.state);                      // tekst (ook "2025.1.0") blijft tekst
+    if (s.state === "" || !isFinite(v)) return esc(s.state);
+    const u = unitOf(e.k);
+    if (u === "s" && v >= 60) return esc(duur(v));
+    const d = /kWh|COP/.test(u) || /cop|prod|cons/.test(e.k) ? 2 : u === "°C" || /\/min/i.test(u) ? 1 : u === "W" ? 0 : (Math.abs(v) < 10 && v % 1 ? 2 : 0);
     return `${fmt(v, d)}${u ? ` <span class="unit">${esc(u)}</span>` : ""}`;
   }
 
@@ -1103,8 +1220,9 @@ function mountDashboard(host, root) {
       put("c-now", { x1: x, x2: x, y1: CV.y0, y2: y }); put("c-dot", { cx: x, cy: y });
       put("c-flow", heatNow ? { cx: x, cy: cvy(X.aanvoer) } : { cx: -50, cy: -50 });
     } else { put("c-now", { x1: -50, x2: -50 }); put("c-dot", { cx: -50, cy: -50 }); put("c-flow", { cx: -50, cy: -50 }); }
-    setT("c-txt", X.curveTarget == null ? "" : `buiten ${fmt(X.buiten, 1)} °C → doel aanvoer ${fmt(X.curveTarget, 1)} °C`, curveOn ? "" : "off");
-    setT("c-txt2", !curveOn ? `Niet actief: operation mode staat op ${X.opmode}.`
+    setT("c-txt", X.curveTarget == null ? "" : `buiten ${fmt(X.buiten, 1)} °C → doel aanvoer ${fmt(X.curveTarget, 1)} °C`
+      + (X.z1sp != null ? ` · FTC6 ${fmt(X.z1sp, 1)} °C` : ""), curveOn ? "" : "off");
+    setT("c-txt2", !curveOn ? `Niet actief: de regeling staat op ${X.opmode}.`
       : heatNow ? `aanvoer nu ${fmt(X.aanvoer, 1)} °C (${X.aanvoer - X.curveTarget >= 0 ? "+" : ""}${fmt(X.aanvoer - X.curveTarget, 1)} t.o.v. de lijn)`
       : "rode stip: werkelijke aanvoer zodra de vloerverwarming draait");
     svg.style.setProperty("--sp-eout", clamp(2.4 - (X.pOut || 0) / 500, 0.4, 2.4).toFixed(2) + "s");
@@ -1116,20 +1234,23 @@ function mountDashboard(host, root) {
     // schema: waarden
     setT("v-buiten", deg(X.buiten));
     setT("v-freq", X.freq > 0 ? fmt(X.freq, 0) + " Hz" : X.compByMeter ? "draait" : X.freq == null ? "–" : "0 Hz", X.compRun ? "" : "off");
-    setT("v-cond", deg(X.cond), X.freq > 0 ? "" : "off");
+    setT("v-cond", deg(X.cond), X.compRun ? "" : "off");
+    setT("v-defrost", X.defrost ? "ontdooien" : "", "warnv");
     setT("v-bh1", onoff(X.bh1), X.bh1 ? "hotv" : "off");
     setT("v-pump1", onoff(X.pump1), X.pump1 ? "" : "off");
     setT("v-aanvoer", deg(X.aanvoer), X.pump1 ? "" : "off");
     setT("v-retour", deg(X.retour), X.pump1 ? "" : "off");
     setT("v-dt", X.pump1 && X.dT != null ? "ΔT " + fmt(X.dT, 1) : "");
-    setT("v-klep", X.klep == null ? "–" : X.dhw ? "→ vat" : "→ vloer", X.pump1 ? "" : "off");
+    setT("v-flow", X.flow == null ? "" : fmt(X.flow, 1) + " L/min", !X.pump1 ? "off" : X.flow < 7.2 ? "warnv" : "");
+    setT("v-klep", X.klep == null && X.opk == null ? "–" : X.dhw ? "→ vat" : "→ vloer", X.pump1 ? "" : "off");
     setT("v-tank", deg(X.tank));
+    setT("v-tank2", fixedNo(X.tank2) ? "geen voeler" : deg(X.tank2), fixedNo(X.tank2) || X.tank2 == null ? "off" : "");
     const lpm = v => fmt(v, v < 10 ? 1 : 0) + " " + (unitOf("tap") || "l/min");
     setT("v-tap", !X.tapFlow ? "" : lpm(X.tapFlow), X.hotDraw ? "" : "off");
     setT("v-tap2", !X.tapFlow ? "" : X.hotDraw ? "via het vat" : "niet via het vat", X.hotDraw ? "" : "off");
     setT("v-target", X.target == null ? "" : `doel ${fmt(X.target, 0)} °C${X.whMode ? " · " + X.whMode : ""}`);
     setT("v-wifi", X.wifi == null ? "–" : fmt(X.wifi, 0) + " dBm", X.wifi != null && X.wifi < -75 ? "warnv" : "");
-    setT("v-boiler", `${onoff(X.boiler)} · ${deg(X.boiler_flow)}`, "off");
+    setT("v-z1mix", `${deg(X.z1_feed)} / ${deg(X.z1_return)}`, "off");
     setT("v-mixing", deg(X.mixing), "off");
     setT("v-pump2", onoff(X.pump2), "off");
     setT("v-pout", X.pOut == null ? "–" : fmt(X.pOut, X.pOut < 100 ? 1 : 0) + " W", X.pOut > P_IDLE ? "" : "off");
@@ -1137,9 +1258,9 @@ function mountDashboard(host, root) {
     setT("v-eout", X.mOut == null ? "" : fmt(X.mOut, 2) + " kWh");
     setT("v-ein", X.mIn == null ? "" : fmt(X.mIn, 2) + " kWh");
     setT("v-meter1", X.mTot == null ? "Geen verbruik van vandaag beschikbaar (geen energieteller of statistiek gevonden)."
-      : `Vandaag gemeten: ${fmt(X.mTot, 2)} kWh${X.consTot != null && X.dailyFresh ? ` · MELCloud schat ${fmt(X.consTot, 2)} kWh` : ""}${st.measured.src === "statistiek" ? " (uit vermogensstatistiek)" : ""}.`);
+      : `Vandaag gemeten: ${fmt(X.mTot, 2)} kWh${X.consTot != null && X.dailyFresh ? ` · de FTC6 schat ${fmt(X.consTot, 2)} kWh` : ""}${st.measured.src === "statistiek" ? " (uit vermogensstatistiek)" : ""}.`);
     setT("v-meter2", X.copMeas != null ? `Warmte vandaag ${fmt(X.prodTot, 2)} kWh ÷ gemeten stroom = COP ${fmt(X.copMeas, 2)} (gemeten).`
-      : X.consTot != null && !X.dailyFresh ? `MELCloud-dagwaarden zijn van ${dagTijd(X.dailySince)}: nog geen gemeten COP.` : "");
+      : X.consTot != null && !X.dailyFresh ? `De dagwaarden van de FTC6 zijn van ${dagTijd(X.dailySince)}: nog geen gemeten COP.` : "");
     // stroming door de vloer: alleen door lussen waarvan de kraan open staat; onbekend telt als open
     const loopOpen = loopsOpen(X), floorOpen = loopOpen.map(o => o.some(Boolean));
     $$(".ff").forEach(el => el.classList.toggle("dicht", !el.dataset.ff.split(" ").some(i => floorOpen[+i])));
@@ -1159,38 +1280,43 @@ function mountDashboard(host, root) {
     });
 
     // kop
-    const ML = { rust: "in rust", verwarming: "ruimteverwarming", tapwater: "tapwater", legionella: "tapwater + booster (legionella?)" };
+    const ML = { rust: X.opk === "frost" ? "vorstbeveiliging" : "in rust", verwarming: "ruimteverwarming", tapwater: "tapwater",
+                 legionella: X.opk === "leg" ? "legionella-run" : "tapwater + booster (legionella?)" };
     const mc = $("#mode"); mc.textContent = ML[X.mode]; mc.className = "chip " + X.mode;
     let last = 0;
-    for (const k of MELCLOUD_KEYS) { const s = S(R[k]); if (s) last = Math.max(last, Date.parse(s.last_reported || s.last_updated) || 0); }
-    $("#upd").textContent = last ? "MELCloud " + hhmm(last) : "";
+    for (const k of CORE_KEYS) { const s = S(R[k]); if (ok(s)) last = Math.max(last, Date.parse(s.last_reported || s.last_updated) || 0); }
+    $("#upd").textContent = last ? "Asgard " + hhmm(last) : "";
     st.last = last;
 
     // kerncijfers
     const kpi = (c, k, v, u, s) => `<button class="kpi" data-c="${c}"><span class="k">${k}</span><span class="v">${v}${u ? ` <small>${u}</small>` : ""}</span><span class="s">${s || "&nbsp;"}</span></button>`;
     $("#kpis").innerHTML = [
-      kpi("th7", "Buiten", fmt(X.buiten, 1), "°C", (X.opmode ? "regeling: " + esc(X.opmode) : "")
-          + (X.curveTarget != null && (X.opmode == null || /curve/i.test(X.opmode)) ? ` · doel aanvoer ${fmt(X.curveTarget, 0)} °C` : "")),
+      kpi("th7", "Buiten", fmt(X.buiten, 1), "°C", (X.opmode ? "regeling: " + esc(opShort(X.opmode)) : "")
+          + (X.z1sp != null ? ` · doel aanvoer ${fmt(X.z1sp, 0)} °C` : X.curveTarget != null && (X.opmode == null || /curve/i.test(X.opmode)) ? ` · doel aanvoer ${fmt(X.curveTarget, 0)} °C` : "")),
       kpi("comp", "Compressor", X.freq > 0 ? fmt(X.freq, 0) : X.compByMeter ? "aan" : X.freq == null ? "–" : "0", X.compByMeter ? "" : "Hz",
-          X.freq > 0 ? "draait" : X.compByMeter ? "volgens de kWh-meter; Hz volgt via MELCloud" : "staat stil"),
+          X.defrost ? "ontdooien" : X.freq > 0 ? "draait" : X.compByMeter ? "volgens de kWh-meter" : "staat stil"),
       kpi("thw1", "Aanvoer / retour", fmt(X.aanvoer, 1), `/ ${fmt(X.retour, 1)} °C`, X.pump1 && X.dT != null ? "ΔT " + fmt(X.dT, 1) + " °C" : "pomp staat stil"),
-      kpi("thw5", "Tapwater", fmt(X.tank, 1), "°C", X.target != null ? "doel " + fmt(X.target, 0) + " °C" : ""),
+      kpi("thw5", "Tapwater", fmt(X.tank, 1), "°C", (X.tank2 != null && !fixedNo(X.tank2) ? `boven ${fmt(X.tank2, 1)} · ` : "")
+          + (X.target != null ? "doel " + fmt(X.target, 0) + " °C" : "")),
       kpi("meterOut", "Vermogen nu", X.pOut == null && X.pIn == null ? "–" : fmt((X.pOut || 0) + (X.pIn || 0), 0), "W",
           X.pOut != null || X.pIn != null ? `buiten ${fmt(X.pOut, 0)} · binnen ${fmt(X.pIn, 0)}` : ""),
-      kpi("ftc", X.dailyFresh || X.dailySince == null ? "Warmte vandaag" : "Warmte (MELCloud-dag)", fmt(X.prodTot, 2), "kWh",
+      kpi("hex", "Warmte nu", X.heatNow == null ? "–" : fmt(X.heatNow / 1000, 2), "kW",
+          X.copNow != null ? `COP nu ${fmt(X.copNow, 1)} met gemeten stroom` : X.compRun ? "" : "compressor staat stil"),
+      kpi("ftc", X.dailyFresh || X.dailySince == null ? "Warmte vandaag" : "Warmte (vorige dag)", fmt(X.prodTot, 2), "kWh",
           (X.heat_prod != null ? `vloer ${fmt(X.heat_prod, 2)} · tap ${fmt(X.dhw_prod, 2)}` : "") + (X.dailySince && !X.dailyFresh ? ` · stand ${dagTijd(X.dailySince)}` : "")),
       // COP per functie uit de COP-sensoren in Home Assistant; 0 betekent: te weinig gedraaid om te berekenen
       (R.heat_cop || R.dhw_cop)
         ? kpi("ftc", "COP vloer / tapwater", `${X.heat_cop ? fmt(X.heat_cop, 1) : "–"} / ${X.dhw_cop ? fmt(X.dhw_cop, 1) : "–"}`, "",
             X.copMeas != null ? `totaal met gemeten stroom ${fmt(X.copMeas, 2)}` : X.dailyFresh || X.dailySince == null ? "vandaag" : `dagwaarde ${dagTijd(X.dailySince)}`)
-        : kpi("meterOut", X.dailyFresh || X.dailySince == null ? "COP vandaag" : "COP (MELCloud-dag)", fmt(X.copMeas ?? X.copMel, 2), "",
-            X.copMeas != null ? "met gemeten stroom" : X.copMel != null ? (X.dailyFresh ? "schatting MELCloud" : "schatting MELCloud, laatste dagwaarde") : "nog te weinig gedraaid"),
+        : kpi("meterOut", X.dailyFresh || X.dailySince == null ? "COP vandaag" : "COP (vorige dag)", fmt(X.copMeas ?? X.copMel, 2), "",
+            X.copMeas != null ? "met gemeten stroom" : X.copMel != null ? (X.dailyFresh ? "schatting FTC6" : "schatting FTC6, laatste dagwaarde") : "nog te weinig gedraaid"),
     ].join("");
 
     // entiteitenlijst
     groups.forEach(g => g.items.forEach(e => {
       const v = root.querySelector(`[data-v="${e.k}"]`); if (v) v.innerHTML = valueHtml(e, X);
-      const i = root.querySelector(`[data-id="${e.k}"]`); if (i) i.textContent = e.dis || (e.unused && !R[e.k]) ? "entiteit uitgeschakeld in Home Assistant" : (R[e.k] || `niet gevonden · override-sleutel "${e.k}"`);
+      const i = root.querySelector(`[data-id="${e.k}"]`); if (i) i.textContent = e.dis ? "komt niet voor in jouw installatie" : e.unused && !R[e.k] ? "entiteit niet gevonden of uitgeschakeld"
+        : R[e.k] || (e.der && e.der(X) != null ? `geen eigen entiteit · afgeleid uit ${e.derSrc}` : `niet gevonden · override-sleutel "${e.k}"`);
     }));
 
     renderBanners(X);
@@ -1200,20 +1326,23 @@ function mountDashboard(host, root) {
 
   function renderBanners(X) {
     const b = [];
-    const mel = MELCLOUD_KEYS.filter(k => R[k]);
-    const down = mel.filter(k => !ok(S(R[k]))).length;
+    const core = CORE_KEYS.filter(k => R[k]);
+    const down = core.filter(k => !ok(S(R[k]))).length;
     if (!R.freq && !R.aanvoer && !R.tank)
-      b.push(["bad", `<b>Geen Ecodan-entiteiten gevonden</b> met voorvoegsel <code>${esc(cfg.prefix)}</code>. Pas het voorvoegsel aan via Instellingen → Apparaten &amp; diensten → Ecodan Dashboard → Configureren.`]);
-    else if (mel.length && down > mel.length / 2)
-      b.push(["bad", `<b>MELCloud niet bereikbaar:</b> ${down} van ${mel.length} entiteiten zijn onbeschikbaar. De waarden in het schema zijn niet actueel.`]);
-    else if (st.last && Date.now() - st.last > 45 * 60e3 && mel.some(k => S(R[k])?.last_reported))
-      b.push(["warn", `<b>Geen nieuwe waarden</b> van MELCloud sinds ${hhmm(st.last)}. Controleer de wifi-adapter of de MELCloud-integratie.`]);
+      b.push(["bad", `<b>Geen Asgard-entiteiten gevonden</b> met voorvoegsel <code>${esc(cfg.prefix)}</code>. Pas het voorvoegsel aan via Instellingen → Apparaten &amp; diensten → Ecodan Dashboard → Configureren.`]);
+    else if (core.length && down > core.length / 2)
+      b.push(["bad", `<b>Asgard niet bereikbaar:</b> ${down} van ${core.length} hoofdwaarden zijn onbeschikbaar. De waarden in het schema zijn niet actueel.`]);
+    else if (st.last && Date.now() - st.last > 45 * 60e3 && core.some(k => S(R[k])?.last_reported))
+      b.push(["warn", `<b>Geen nieuwe waarden</b> van de Asgard sinds ${hhmm(st.last)}. Controleer de Asgard (wifi, stroom) en de ESPHome-integratie.`]);
+    if (X.faultOn) b.push(["bad", `<b>Storing op de Ecodan: ${esc(X.fault)}.</b> Zie het bedieningspaneel of de servicehandleiding voor de betekenis van de code.`]);
+    if (X.refErrOn) b.push(["bad", `<b>Koudemiddelcircuit meldt: ${esc(X.refErr)}.</b>`]);
     if (X.opmode != null && !/curve/i.test(X.opmode))
-      b.push(["warn", `<b>Operation mode staat op ${esc(X.opmode)}</b> in plaats van Curve (stooklijn). Daardoor regelt de warmtepomp op ${/room/i.test(X.opmode) ? "de kamertemperatuur van het display in de technische ruimte" : "een vaste aanvoertemperatuur"}.`]);
+      b.push(["warn", `<b>De regeling staat op ${esc(X.opmode)}</b> in plaats van Heat Compensation Curve (stooklijn). Daardoor regelt de warmtepomp op ${/room|target/i.test(X.opmode) ? "de kamertemperatuur van het bedieningspaneel in de technische ruimte" : "een vaste aanvoertemperatuur"}.`]);
     if (X.bh1 && !X.dhw)
       b.push(["warn", `<b>Booster heater aan tijdens ruimteverwarming.</b> De warmtepomp redt het alleen niet (vorst of ontdooien). Elke kWh stroom levert hier maar 1 kWh warmte.`]);
-    else if (X.bh1)
-      b.push(["", `<b>Legionella-run (waarschijnlijk):</b> de booster heater helpt het vat naar ±60 °C te brengen.`]);
+    else if (X.mode === "legionella")
+      b.push(["", X.opk === "leg" ? `<b>Legionella-run:</b> het vat wordt naar ${X.leg_temp != null ? fmt(X.leg_temp, 0) : "±60"} °C gebracht${X.bh1 ? "; de booster heater helpt mee" : ""}.`
+        : `<b>Legionella-run (waarschijnlijk):</b> de booster heater helpt het vat naar ±60 °C te brengen.`]);
     if (X.imm) b.push(["warn", `<b>Immersion heater meldt aan.</b> Bij de EHST20D-VM2D zit normaal geen dompelaar.`]);
     $("#banners").innerHTML = b.map(([c, t]) => `<div class="banner ${c}">${t}</div>`).join("");
   }
@@ -1221,13 +1350,15 @@ function mountDashboard(host, root) {
   function renderNow(X) {
     const li = [];
     const hz = X.freq > 0 ? fmt(X.freq, 0) + " Hz" : X.compByMeter ? "aan (volgens de kWh-meter)" : X.freq == null ? "–" : "0 Hz";
-    if (X.compByMeter) li.push(`<b>De compressor draait</b> volgens de kWh-meter van de buitenunit (${fmt(X.pOut, 0)} W). MELCloud meldt nog 0 Hz; de frequentie en de andere waarden volgen over een paar minuten.`);
+    if (X.compByMeter) li.push(`<b>De compressor draait</b> volgens de kWh-meter van de buitenunit (${fmt(X.pOut, 0)} W), maar de Asgard meldt 0 Hz.`);
+    if (X.defrost) li.push(`<b>De buitenunit ontdooit.</b> De warmtepomp haalt even warmte uit het water om het ijs van de verdamper te smelten; de aanvoer zakt kort.`);
     if (X.mode === "rust") li.push(`<b>De installatie staat in rust.</b> Compressor ${hz}, pomp 1 uit${X.bh1 ? "" : ", geen elektrische bijverwarming"}.`);
-    else if (X.mode === "verwarming") li.push(`<b>Ruimteverwarming.</b> Compressor ${hz}, aanvoer ${deg(X.aanvoer)}, retour ${deg(X.retour)}${X.dT != null ? `, ΔT ${fmt(X.dT, 1)} °C` : ""}. Het water gaat naar de verdelers.`);
+    else if (X.mode === "verwarming") li.push(`<b>Ruimteverwarming.</b> Compressor ${hz}, aanvoer ${deg(X.aanvoer)}, retour ${deg(X.retour)}${X.dT != null ? `, ΔT ${fmt(X.dT, 1)} °C` : ""}${X.flow != null ? `, ${fmt(X.flow, 1)} L/min` : ""}. Het water gaat naar de verdelers.`);
     else li.push(`<b>Tapwater wordt opgewarmd.</b> Vat ${deg(X.tank)}${X.target != null ? `, doel ${fmt(X.target, 0)} °C` : ""}; aanvoer ${deg(X.aanvoer)}. De vloeren krijgen nu geen warmte: tapwater gaat voor.${X.bh1 ? " De booster heater helpt mee." : ""}`);
     if (X.curveTarget != null && (X.opmode == null || /curve/i.test(X.opmode)))
-      li.push(`<b>Stooklijn:</b> bij ${deg(X.buiten)} buiten hoort een aanvoer van ${deg(X.curveTarget)}${X.mode === "verwarming" && X.aanvoer != null ? `; nu ${deg(X.aanvoer)}` : ""}.`);
-    if (X.freq > 0 && !X.pump1) li.push(`De compressor draait maar pomp 1 staat (nog) uit: meestal een opstart- of ontdooimoment, of MELCloud loopt achter.`);
+      li.push(`<b>Stooklijn:</b> bij ${deg(X.buiten)} buiten hoort een aanvoer van ${deg(X.curveTarget)}${X.z1sp != null ? ` (de FTC6 mikt op ${deg(X.z1sp)})` : ""}${X.mode === "verwarming" && X.aanvoer != null ? `; nu ${deg(X.aanvoer)}` : ""}.`);
+    if (X.heatNow > 0 && X.compRun) li.push(`<b>Warmte nu: ${fmt(X.heatNow / 1000, 2)} kW</b>${X.copNow != null ? ` bij ${fmt((X.pOut || 0) + (X.pIn || 0), 0)} W stroom: COP ${fmt(X.copNow, 1)}` : ""}.`);
+    if (X.freq > 0 && !X.pump1) li.push(`De compressor draait maar pomp 1 staat (nog) uit: meestal een opstart- of ontdooimoment.`);
     if (X.pump1 && !X.freq) li.push(`Pomp 1 draait zonder compressor: nadraaien na een run, of ontdooien.`);
     if (X.vraagSrc !== "afgeleid")
       li.push(X.vraag ? `<b>Er is warmtevraag</b> vanuit ${X.vraagSrc === "signaal" ? "het warmtevraagsignaal" : "minstens één thermostaat"}.` : `Geen van de thermostaten vraagt nu warmte.`);
@@ -1246,10 +1377,10 @@ function mountDashboard(host, root) {
       const d = X.target - X.tank;
       li.push(d <= 0 ? `<b>Het vat is op temperatuur</b> (${deg(X.tank)}).` : `<b>Vat ${deg(X.tank)}</b>, ${fmt(d, 1)} °C onder het doel. ${d <= 8 ? "Binnen de marge (hysterese), dus de warmtepomp start nog niet." : "Tapwater-opwarming volgt binnenkort."}`);
     }
-    const dag = X.dailyFresh || X.dailySince == null ? "vandaag" : `(MELCloud-dagwaarde van ${dagTijd(X.dailySince)})`;
+    const dag = X.dailyFresh || X.dailySince == null ? "vandaag" : `(dagwaarde van de FTC6 van ${dagTijd(X.dailySince)})`;
     if (X.dhw_prod != null) li.push(`<b>Tapwater ${dag}:</b> ${fmt(X.dhw_cons, 2)} kWh stroom in, ${fmt(X.dhw_prod, 2)} kWh warmte uit${X.dhw_cop ? `: COP ${fmt(X.dhw_cop, 2)}` : R.dhw_cop ? "" : X.dhw_cons > 0.2 ? `: COP ${fmt(X.dhw_prod / X.dhw_cons, 2)}` : ""}.`);
     if (X.heat_prod != null) li.push(`<b>Vloerverwarming ${dag}:</b> ${fmt(X.heat_cons, 2)} kWh stroom in, ${fmt(X.heat_prod, 2)} kWh warmte uit${X.heat_cop ? `: COP ${fmt(X.heat_cop, 2)}` : !R.heat_cop && X.heat_cons > 0.2 ? `: COP ${fmt(X.heat_prod / X.heat_cons, 2)}` : ": te weinig om een COP te berekenen"}.`);
-    if (X.mTot != null) li.push(`<b>Gemeten in de meterkast vandaag:</b> ${fmt(X.mTot, 2)} kWh${X.consTot != null && X.dailyFresh ? ` tegen ${fmt(X.consTot, 2)} kWh volgens MELCloud` : ""}${X.copMeas != null ? `. Echte COP vandaag: <b>${fmt(X.copMeas, 2)}</b>` : ""}.`);
+    if (X.mTot != null) li.push(`<b>Gemeten in de meterkast vandaag:</b> ${fmt(X.mTot, 2)} kWh${X.consTot != null && X.dailyFresh ? ` tegen ${fmt(X.consTot, 2)} kWh volgens de FTC6` : ""}${X.copMeas != null ? `. Echte COP vandaag: <b>${fmt(X.copMeas, 2)}</b>` : ""}.`);
     if (X.pOut != null || X.pIn != null)
       li.push(`<b>Stroom nu: ${fmt(X.pOut, 0)} W buiten, ${fmt(X.pIn, 0)} W binnen.</b> ${X.pOut < P_IDLE && X.pIn < P_IDLE ? "Alleen stand-by." : X.pIn > 1500 ? "De booster heater staat aan." : ""}`);
     $("#nowlist").innerHTML = li.map(t => `<li>${t}</li>`).join("");
@@ -1273,14 +1404,14 @@ function mountDashboard(host, root) {
     $$("ul.ents button").forEach(b => b.classList.toggle("on", byKey[b.dataset.e].c === c && (!key || b.dataset.e === key)));
     const e = key ? byKey[key] : null, X = st.X || {};
     const list = Object.values(byKey).filter(x => x.c === c);
-    let h = `<div class="kicker">${e ? (e.dis || (e.unused && !R[e.k]) ? "uitgeschakeld in Home Assistant" : esc(R[e.k] || "niet gevonden")) : esc(d.where)}</div><h2>${e ? e.n : d.name}</h2>`;
+    let h = `<div class="kicker">${e ? (e.dis ? "komt niet voor in jouw installatie" : e.unused && !R[e.k] ? "niet gevonden of uitgeschakeld" : esc(R[e.k] || (e.der ? "afgeleid uit " + e.derSrc : "niet gevonden"))) : esc(d.where)}</div><h2>${e ? e.n : d.name}</h2>`;
     if (e) {
       h += `<p class="muted">Onderdeel: <b style="color:var(--ink)">${d.name}</b> · ${d.where}</p>`;
       h += `<p>${e.x || d.text}</p>`;
       if (e.x) h += `<p class="muted">${d.text}</p>`;
       const nowTxt = e.now ? e.now({ ...X, v: X[e.k] }) : "";
       h += `<div class="now">Nu: <b>${valueHtml(e, X)}</b>${nowTxt ? "<br>" + nowTxt : ""}</div>`;
-      if (!e.dis && !e.unused && !R[e.k]) h += `<p class="muted">Niet gevonden. Koppel hem met de hand via Configureren → overrides, bijv. <code>{"${e.k}": "${ENT[e.k]?.d || "sensor"}.…"}</code>.</p>`;
+      if (!e.dis && !e.unused && !R[e.k]) h += `<p class="muted">${e.der ? `Deze entiteit is niet gevonden; het panel leidt de stand af uit ${e.derSrc}. Staat hij onder een andere naam in Home Assistant, koppel hem dan` : "Niet gevonden. Koppel hem met de hand"} via Configureren → overrides, bijv. <code>{"${e.k}": "${ENT[e.k]?.d || "sensor"}.${esc(cfg.prefix)}_${ENT[e.k]?.s[0] || "…"}"}</code>.</p>`;
       if (R[e.k] && S(R[e.k])) h += `<button class="hist" data-more="${esc(R[e.k])}">Geschiedenis en details</button>`;
     } else h += `<p>${d.text}</p>`;
     const others = list.filter(x => !e || x.k !== e.k);
@@ -1444,7 +1575,7 @@ function mountDashboard(host, root) {
 
   /* bijwerken: alleen als een relevante entiteit verandert, hooguit één keer per frame */
   let raf = 0;
-  const watched = () => [...MELCLOUD_KEYS, "p_out", "p_in", "e_out", "e_in", "tap", "vraag"].map(k => R[k])
+  const watched = () => [...Object.keys(ENT), "opmode", "p_out", "p_in", "e_out", "e_in", "tap", "vraag"].map(k => R[k])
     .concat(R.floors.flatMap(f => f.kamers.map(r => r.ent))).filter(Boolean);
   let watchIds = watched(), nStates = Object.keys(host._hass.states).length;
   const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; update(); }); };

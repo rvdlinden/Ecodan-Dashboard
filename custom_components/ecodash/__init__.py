@@ -2,7 +2,7 @@
 
 De integratie serveert de frontend-bestanden uit deze map en registreert het panel.
 Alle data haalt het panel zelf uit de websocket-sessie van de ingelogde gebruiker
-(hass.states van de MELCloud-integratie en de kWh-meters, plus recorder-statistieken).
+(hass.states van de Asgard via ESPHome en de kWh-meters, plus recorder-statistieken).
 """
 from __future__ import annotations
 

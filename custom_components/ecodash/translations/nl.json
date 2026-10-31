@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Ecodan Dashboard",
-        "description": "Voegt een panel toe aan de zijbalk met een live installatieschema van de Ecodan-warmtepomp. De MELCloud-entiteiten worden automatisch gevonden; het entiteit-voorvoegsel en een handmatige koppeling stel je later in via Configureren.",
+        "description": "Voegt een panel toe aan de zijbalk met een live installatieschema van de Ecodan-warmtepomp. De entiteiten van de Asgard (ESPHome) worden automatisch gevonden; het entiteit-voorvoegsel en een handmatige koppeling stel je later in via Configureren.",
         "data": {
           "sidebar_title": "Naam in de zijbalk",
           "sidebar_icon": "Icoon",
@@ -50,11 +50,11 @@
           "stooklijn_verschuiving": "Stooklijn: verschuiving"
         },
         "data_description": {
-          "prefix": "Het stuk tussen het domein en de sensornaam, bijv. technische_ruimte_ecodan voor sensor.technische_ruimte_ecodan_tanktemperatuur.",
+          "prefix": "Het stuk tussen het domein en de sensornaam, bijv. technische_ruimte_ecodan voor sensor.technische_ruimte_ecodan_dhw_current_temp.",
           "klep_aan_is_tapwater": "Zet dit uit als het schema verwarming toont terwijl het vat wordt opgewarmd.",
           "overrides": "Bijv. water_heater: water_heater.ecodan. Leeg laten voor automatische detectie. Alle sleutels staan in de README.",
           "thema": "Standaard voor iedereen. De zon/maan-knop in het panel overschrijft dit per apparaat.",
-          "stooklijn_buiten_koud": "Neem deze over van het Ecodan-display (Verwarming → Compensatiecurve). Het panel kan ze niet uit MELCloud lezen. Bij deze buitentemperatuur en kouder is de aanvoer de waarde hieronder.",
+          "stooklijn_buiten_koud": "Neem deze over van het Ecodan-display (Verwarming → Compensatiecurve). De warmtepomp geeft deze punten niet door. Bij deze buitentemperatuur en kouder is de aanvoer de waarde hieronder.",
           "stooklijn_buiten_warm": "Bij deze buitentemperatuur en warmer is de aanvoer de waarde hieronder. Moet warmer zijn dan het koude punt.",
           "stooklijn_middenpunt": "Alleen als op het display een aanpassingspunt is ingesteld; het moet tussen het koude en het warme punt liggen.",
           "stooklijn_verschuiving": "Verschuiving van de hele lijn zoals op het display ingesteld (−5 tot +5 °C). Meestal 0.",
