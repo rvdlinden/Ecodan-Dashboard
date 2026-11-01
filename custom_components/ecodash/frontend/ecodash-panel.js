@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.10.2";
+const ECODASH_VERSION = "1.10.3";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -768,16 +768,16 @@ const G = [
       : X.aanvoer != null && X.cond != null ? `${fmt(X.cond - X.aanvoer, 1)} °C boven de aanvoertemperatuur. Een paar graden is normaal; hoe kleiner, hoe zuiniger.` : "" },
     { k: "th2", n: "Refrigerant Liquid Temp", c: "th2", x: "Voeler TH2 op de vloeistofleiding na de platenwisselaar: het gecondenseerde koudemiddel dat terug naar buiten gaat.",
       now: X => X.compRun && X.th2 != null && X.retour != null ? `${fmt(X.th2 - X.retour, 1)} °C ten opzichte van de retour.` : "" },
-    { k: "discharge", n: "Discharge Temp", c: "asgOut", x: "Temperatuur van het hete gas direct na de compressor (persgas). Ruim boven de condensatietemperatuur; te hoog wijst op te weinig koudemiddel." },
-    { k: "superheat", n: "Discharge Superheat Temp", c: "asgOut", x: "Hoeveel het persgas warmer is dan de condensatietemperatuur. De buitenunit regelt hiermee het expansieventiel." },
-    { k: "subcool", n: "Subcooling Temp", c: "th2", x: "Hoeveel het vloeibare koudemiddel na de platenwisselaar onder de condensatietemperatuur is afgekoeld. Een paar graden is normaal." },
-    { k: "ou_suction", n: "Outside Unit Suction Pipe Temp", c: "asgOut", x: "Zuiggasleiding naar de compressor: het koudemiddel dat net warmte uit de buitenlucht heeft opgenomen." },
-    { k: "ou_2phase", n: "Outside Unit Two Phase Pipe Temp", c: "asgOut", x: "Leiding in de verdamper waar het koudemiddel half vloeibaar, half gas is: de verdampingstemperatuur. Ligt onder de buitentemperatuur." },
-    { k: "ou_liquid", n: "Outside Unit Liquid Pipe 1 Temp", c: "asgOut", x: "Vloeistofleiding in de buitenunit, vóór het expansieventiel." },
-    { k: "ou_surface", n: "Outside Unit Compressor Surface Temp", c: "asgOut", x: "Temperatuur van de compressorbehuizing." },
-    { k: "ou_heatsink", n: "Outside Unit Heatsink Temp", c: "asgOut", x: "Koelplaat van de inverterelektronica die het toerental van de compressor regelt." },
-    { k: "fan", n: "Fan Speed", c: "asgOut", x: "Toerental van de ventilator. Draait mee met de compressor; bij ontdooien staat hij stil." },
-    { k: "starts", n: "Accumulated Compressor Starts", c: "asgOut", x: "Teller van compressorstarts. Veel starts per dag (pendelen) is slecht voor de levensduur en het rendement." },
+    { k: "discharge", svc: 1, n: "Discharge Temp", c: "asgOut", x: "Temperatuur van het hete gas direct na de compressor (persgas). Ruim boven de condensatietemperatuur; te hoog wijst op te weinig koudemiddel." },
+    { k: "superheat", svc: 1, n: "Discharge Superheat Temp", c: "asgOut", x: "Hoeveel het persgas warmer is dan de condensatietemperatuur. De buitenunit regelt hiermee het expansieventiel." },
+    { k: "subcool", svc: 1, n: "Subcooling Temp", c: "th2", x: "Hoeveel het vloeibare koudemiddel na de platenwisselaar onder de condensatietemperatuur is afgekoeld. Een paar graden is normaal." },
+    { k: "ou_suction", svc: 1, n: "Outside Unit Suction Pipe Temp", c: "asgOut", x: "Zuiggasleiding naar de compressor: het koudemiddel dat net warmte uit de buitenlucht heeft opgenomen." },
+    { k: "ou_2phase", svc: 1, n: "Outside Unit Two Phase Pipe Temp", c: "asgOut", x: "Leiding in de verdamper waar het koudemiddel half vloeibaar, half gas is: de verdampingstemperatuur. Ligt onder de buitentemperatuur." },
+    { k: "ou_liquid", svc: 1, n: "Outside Unit Liquid Pipe 1 Temp", c: "asgOut", x: "Vloeistofleiding in de buitenunit, vóór het expansieventiel." },
+    { k: "ou_surface", svc: 1, n: "Outside Unit Compressor Surface Temp", c: "asgOut", x: "Temperatuur van de compressorbehuizing." },
+    { k: "ou_heatsink", svc: 1, n: "Outside Unit Heatsink Temp", c: "asgOut", x: "Koelplaat van de inverterelektronica die het toerental van de compressor regelt." },
+    { k: "fan", svc: 1, n: "Fan Speed", c: "asgOut", x: "Toerental van de ventilator. Draait mee met de compressor; bij ontdooien staat hij stil." },
+    { k: "starts", svc: 1, n: "Accumulated Compressor Starts", c: "asgOut", x: "Teller van compressorstarts. Veel starts per dag (pendelen) is slecht voor de levensduur en het rendement." },
     { k: "runtime", n: "Operating Runtime", c: "asgOut", x: "Totale draaitijd van de warmtepomp in uren." },
   ]},
   { title: "Waterkant cilinderunit", note: "Het verwarmingswater dat rondgaat tussen platenwisselaar, vat en vloeren.", items: [
@@ -1383,7 +1383,7 @@ function mountDashboard(host, root) {
     if (e.dis) return `<span class="pill unused">n.v.t.</span>`;
     const id = R[e.k], s = S(id);
     if (!id && e.der && e.der(X) != null) return `<span class="pill${e.der(X) ? " on" : ""}">${e.der(X) ? "aan" : "uit"}</span> <span class="unit">afgeleid</span>`;
-    if (!id) return e.unused ? `<span class="pill unused">uitgeschakeld</span>` : `<span class="pill missing">niet gevonden</span>`;
+    if (!id) return e.unused || e.svc ? `<span class="pill unused">uitgeschakeld</span>` : `<span class="pill missing">niet gevonden</span>`;
     if (!ok(s)) return `<span class="pill missing">${s ? s.state : "ontbreekt"}</span>`;
     if (id.startsWith("binary_sensor.")) return `<span class="pill${s.state === "on" ? " on" : ""}${e.unused ? " unused" : ""}">${s.state === "on" ? "aan" : "uit"}</span>`;
     const v = Number(s.state);                      // tekst (ook "2025.1.0") blijft tekst
@@ -1569,7 +1569,7 @@ function mountDashboard(host, root) {
     // entiteitenlijst
     groups.forEach(g => g.items.forEach(e => {
       const v = root.querySelector(`[data-v="${e.k}"]`); if (v) v.innerHTML = valueHtml(e, X);
-      const i = root.querySelector(`[data-id="${e.k}"]`); if (i) i.textContent = e.dis ? "komt niet voor in jouw installatie" : e.unused && !R[e.k] ? "entiteit niet gevonden of uitgeschakeld"
+      const i = root.querySelector(`[data-id="${e.k}"]`); if (i) i.textContent = e.dis ? "komt niet voor in jouw installatie" : e.svc && !R[e.k] ? "servicewaarde uitgeschakeld (levert deze buitenunit niet)" : e.unused && !R[e.k] ? "entiteit niet gevonden of uitgeschakeld"
         : R[e.k] || (e.der && e.der(X) != null ? `geen eigen entiteit · afgeleid uit ${e.derSrc}` : `niet gevonden · override-sleutel "${e.k}"`);
     }));
 
@@ -1658,14 +1658,15 @@ function mountDashboard(host, root) {
     $$("ul.ents button").forEach(b => b.classList.toggle("on", byKey[b.dataset.e].c === c && (!key || b.dataset.e === key)));
     const e = key ? byKey[key] : null, X = st.X || {};
     const list = Object.values(byKey).filter(x => x.c === c);
-    let h = `<div class="kicker">${e ? (e.dis ? "komt niet voor in jouw installatie" : e.unused && !R[e.k] ? "niet gevonden of uitgeschakeld" : esc(R[e.k] || (e.der ? "afgeleid uit " + e.derSrc : "niet gevonden"))) : esc(d.where)}</div><h2>${e ? e.n : d.name}</h2>`;
+    let h = `<div class="kicker">${e ? (e.dis ? "komt niet voor in jouw installatie" : (e.unused || e.svc) && !R[e.k] ? "niet gevonden of uitgeschakeld" : esc(R[e.k] || (e.der ? "afgeleid uit " + e.derSrc : "niet gevonden"))) : esc(d.where)}</div><h2>${e ? e.n : d.name}</h2>`;
     if (e) {
       h += `<p class="muted">Onderdeel: <b style="color:var(--ink)">${d.name}</b> · ${d.where}</p>`;
       h += `<p>${e.x || d.text}</p>`;
       if (e.x) h += `<p class="muted">${d.text}</p>`;
       const nowTxt = e.now ? e.now({ ...X, v: X[e.k] }) : "";
       h += `<div class="now">Nu: <b>${valueHtml(e, X)}</b>${nowTxt ? "<br>" + nowTxt : ""}</div>`;
-      if (!e.dis && !e.unused && !R[e.k]) h += `<p class="muted">${e.der ? `Deze entiteit is niet gevonden; het panel leidt de stand af uit ${e.derSrc}. Staat hij onder een andere naam in Home Assistant, koppel hem dan` : "Niet gevonden. Koppel hem met de hand"} via Configureren → overrides, bijv. <code>{"${e.k}": "${ENT[e.k]?.d || "sensor"}.${esc(cfg.prefix)}_${ENT[e.k]?.s[0] || "…"}"}</code>.</p>`;
+      if (e.svc && !R[e.k]) h += `<p class="muted">Uitgeschakeld in Home Assistant. Deze servicewaarde levert jouw buitenunit niet; zet dan ook <code>service_codes_enabled</code> van de Asgard uit.</p>`;
+      if (!e.dis && !e.unused && !e.svc && !R[e.k]) h += `<p class="muted">${e.der ? `Deze entiteit is niet gevonden; het panel leidt de stand af uit ${e.derSrc}. Staat hij onder een andere naam in Home Assistant, koppel hem dan` : "Niet gevonden. Koppel hem met de hand"} via Configureren → overrides, bijv. <code>{"${e.k}": "${ENT[e.k]?.d || "sensor"}.${esc(cfg.prefix)}_${ENT[e.k]?.s[0] || "…"}"}</code>.</p>`;
       if (R[e.k] && S(R[e.k])) h += `<button class="hist" data-more="${esc(R[e.k])}">Geschiedenis en details</button>`;
     } else h += `<p>${d.text}</p>`;
     const others = list.filter(x => !e || x.k !== e.k);
