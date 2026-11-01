@@ -28,7 +28,9 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
     compressor loopt een sinusgolf: meer golven en sneller bij een hogere frequentie, een vlakke
     lijn als hij stilstaat. Meet de kWh-meter van de buitenunit meer dan 150 W terwijl de
     frequentie (nog) 0 is, dan draaien ventilator en koudemiddel toch mee en staat er *draait*.
-    Ontdooit de buitenunit (*Defrost*), dan staat dat onder de ventilator.
+    Ontdooit de buitenunit (*Defrost*), dan staat de ventilator stil, lopen de paarse bolletjes
+    achteruit (de 4-wegklep keert de kringloop om), staat er *ontdooien* onder de ventilator en
+    bovenaan een melding, en toont het hoofdscherm een sneeuwvlok op de plek van de warmtepomp.
   - Verwarmingswater zodra pomp 1 draait. De 3-wegklep bepaalt de route: naar de verdelers
     en vloerlussen (verwarming) óf door platenwisselaar 16 naast het vat (tapwater); dan draait
     ook de sanitaire pomp 18 die het tapwater door de wisselaar pompt (pomp 4 van de FTC6,
