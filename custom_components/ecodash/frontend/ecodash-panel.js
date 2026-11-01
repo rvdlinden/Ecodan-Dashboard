@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.10.1";
+const ECODASH_VERSION = "1.10.3";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -738,7 +738,7 @@ const C = {
   manifold: { name: "Vloerverwarmingsverdelers", where: "Eén per verdieping", text: "Verdelen het warme water over de lussen van een verdieping: 5 op de begane grond, 5 op de 1e en 3 op de 2e verdieping. Elke lus is een slang die door één kamer (of een deel ervan) in de dekvloer loopt en afgekoeld terugkomt." },
   act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' die een lus open of dicht zetten, aangestuurd door de thermostaat via de regelunit. Op de begane grond en de 2e verdieping zit er één op de hoofdaanvoer van de verdeler: de thermostaat zet daar alle lussen tegelijk open of dicht. Op de 1e verdieping heeft elke slaapkamer een eigen aandrijving; die van de badkamer volgt de thermostaat van slaapkamer 1. De lus naar de overloop heeft geen aandrijving en staat altijd open. Lussen zonder aandrijving hebben alleen een handwiel (het rondje op de verdeler). De aandrijvingen zijn niet uit te lezen: het panel neemt aan dat een kraan open staat zodra de kamer 0,2 °C onder de ingestelde waarde zakt en weer dicht gaat 0,2 °C erboven. Een open kraan krijgt een rode rand en alleen door open lussen lopen bolletjes als de vloerverwarming draait." },
   tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat (Möhlenhoff) opent de aandrijving(en) die op zijn kanaal van de regelunit zitten. In het display-icoon staat de ingestelde temperatuur uit Configureren, ernaast de gemeten temperatuur. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt, schat het panel uit gemeten tegen ingesteld: 0,2 °C eronder gaat de kraan open en kleurt het display-icoon rood, 0,2 °C erboven gaat hij weer dicht. De warmtevraag naar de FTC6 (ingang IN1) leest het panel via de Asgard ('In1 Thermostat'); staat die aan, dan kleurt het signaal naar de FTC6 rood. Zonder die entiteit leidt het panel de vraag af uit de warmtepomp." },
-  unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een mengklep met eigen zonevoelers, een mengvat met extra zonepomp en een dompelaar. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat de Asgard ze altijd aanmaakt. Voelers zonder sensor geven een vaste 25,0 °C." },
+  unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een mengklep met eigen zonevoelers, een mengvat met extra zonepomp en een dompelaar. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat de Asgard ze altijd aanmaakt. Voelers zonder sensor geven een vaste 25,0 °C. Water Pump 2 Status kan tijdens ruimteverwarming 'aan' melden: dan schakelt alleen de uitgang OUT2, er hangt geen pomp aan." },
   curve: { name: "Stooklijn (compensatiecurve)", where: "Instelling in de FTC6", text: "Met de regeling op Heat Compensation Curve bepaalt de FTC6 de aanvoertemperatuur uit de buitentemperatuur (TH7): hoe kouder buiten, hoe warmer het water naar de vloeren. Tot en met het koude punt geldt de hoogste aanvoer, vanaf het warme punt de laagste, en daartussen loopt de lijn recht (via het aanpassingspunt als dat is ingesteld). De groene stip is de huidige buitentemperatuur op de lijn: de aanvoer waar de FTC6 volgens de ingestelde punten op mikt. De Asgard meldt ook het aanvoerdoel dat de FTC6 zelf berekent (Zone 1 Setpoint Value); dat staat erbij en hoort gelijk te zijn aan de lijn. De rode stip is de werkelijke aanvoer (THW1) zodra de vloerverwarming draait. De punten zelf geeft de FTC6 niet door; ze komen uit Configureren. Pas ze daar aan als je de stooklijn op het Ecodan-display verandert." },
   zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. De Asgard meldt het aanvoerdoel van die zone (Zone 1 Setpoint Value) en de kamertemperatuur zoals de FTC6 die kent (Zone 1 Room Temp, van de voeler in het bedieningspaneel in de technische ruimte). Bij regeling op de stooklijn speelt die kamertemperatuur geen rol." },
   absent: { name: "Niet in jouw installatie", where: "Komen niet voor in jouw installatie", text: "De Asgard-firmware kent ook entiteiten voor koelen, een tweede zone, een tweede booster-trap en pomp 3 (zone 2). Jouw installatie heeft die onderdelen niet; als ze in Home Assistant staan, kun je ze uitschakelen." },
@@ -768,16 +768,16 @@ const G = [
       : X.aanvoer != null && X.cond != null ? `${fmt(X.cond - X.aanvoer, 1)} °C boven de aanvoertemperatuur. Een paar graden is normaal; hoe kleiner, hoe zuiniger.` : "" },
     { k: "th2", n: "Refrigerant Liquid Temp", c: "th2", x: "Voeler TH2 op de vloeistofleiding na de platenwisselaar: het gecondenseerde koudemiddel dat terug naar buiten gaat.",
       now: X => X.compRun && X.th2 != null && X.retour != null ? `${fmt(X.th2 - X.retour, 1)} °C ten opzichte van de retour.` : "" },
-    { k: "discharge", n: "Discharge Temp", c: "asgOut", x: "Temperatuur van het hete gas direct na de compressor (persgas). Ruim boven de condensatietemperatuur; te hoog wijst op te weinig koudemiddel." },
-    { k: "superheat", n: "Discharge Superheat Temp", c: "asgOut", x: "Hoeveel het persgas warmer is dan de condensatietemperatuur. De buitenunit regelt hiermee het expansieventiel." },
-    { k: "subcool", n: "Subcooling Temp", c: "th2", x: "Hoeveel het vloeibare koudemiddel na de platenwisselaar onder de condensatietemperatuur is afgekoeld. Een paar graden is normaal." },
-    { k: "ou_suction", n: "Outside Unit Suction Pipe Temp", c: "asgOut", x: "Zuiggasleiding naar de compressor: het koudemiddel dat net warmte uit de buitenlucht heeft opgenomen." },
-    { k: "ou_2phase", n: "Outside Unit Two Phase Pipe Temp", c: "asgOut", x: "Leiding in de verdamper waar het koudemiddel half vloeibaar, half gas is: de verdampingstemperatuur. Ligt onder de buitentemperatuur." },
-    { k: "ou_liquid", n: "Outside Unit Liquid Pipe 1 Temp", c: "asgOut", x: "Vloeistofleiding in de buitenunit, vóór het expansieventiel." },
-    { k: "ou_surface", n: "Outside Unit Compressor Surface Temp", c: "asgOut", x: "Temperatuur van de compressorbehuizing." },
-    { k: "ou_heatsink", n: "Outside Unit Heatsink Temp", c: "asgOut", x: "Koelplaat van de inverterelektronica die het toerental van de compressor regelt." },
-    { k: "fan", n: "Fan Speed", c: "asgOut", x: "Toerental van de ventilator. Draait mee met de compressor; bij ontdooien staat hij stil." },
-    { k: "starts", n: "Accumulated Compressor Starts", c: "asgOut", x: "Teller van compressorstarts. Veel starts per dag (pendelen) is slecht voor de levensduur en het rendement." },
+    { k: "discharge", svc: 1, n: "Discharge Temp", c: "asgOut", x: "Temperatuur van het hete gas direct na de compressor (persgas). Ruim boven de condensatietemperatuur; te hoog wijst op te weinig koudemiddel." },
+    { k: "superheat", svc: 1, n: "Discharge Superheat Temp", c: "asgOut", x: "Hoeveel het persgas warmer is dan de condensatietemperatuur. De buitenunit regelt hiermee het expansieventiel." },
+    { k: "subcool", svc: 1, n: "Subcooling Temp", c: "th2", x: "Hoeveel het vloeibare koudemiddel na de platenwisselaar onder de condensatietemperatuur is afgekoeld. Een paar graden is normaal." },
+    { k: "ou_suction", svc: 1, n: "Outside Unit Suction Pipe Temp", c: "asgOut", x: "Zuiggasleiding naar de compressor: het koudemiddel dat net warmte uit de buitenlucht heeft opgenomen." },
+    { k: "ou_2phase", svc: 1, n: "Outside Unit Two Phase Pipe Temp", c: "asgOut", x: "Leiding in de verdamper waar het koudemiddel half vloeibaar, half gas is: de verdampingstemperatuur. Ligt onder de buitentemperatuur." },
+    { k: "ou_liquid", svc: 1, n: "Outside Unit Liquid Pipe 1 Temp", c: "asgOut", x: "Vloeistofleiding in de buitenunit, vóór het expansieventiel." },
+    { k: "ou_surface", svc: 1, n: "Outside Unit Compressor Surface Temp", c: "asgOut", x: "Temperatuur van de compressorbehuizing." },
+    { k: "ou_heatsink", svc: 1, n: "Outside Unit Heatsink Temp", c: "asgOut", x: "Koelplaat van de inverterelektronica die het toerental van de compressor regelt." },
+    { k: "fan", svc: 1, n: "Fan Speed", c: "asgOut", x: "Toerental van de ventilator. Draait mee met de compressor; bij ontdooien staat hij stil." },
+    { k: "starts", svc: 1, n: "Accumulated Compressor Starts", c: "asgOut", x: "Teller van compressorstarts. Veel starts per dag (pendelen) is slecht voor de levensduur en het rendement." },
     { k: "runtime", n: "Operating Runtime", c: "asgOut", x: "Totale draaitijd van de warmtepomp in uren." },
   ]},
   { title: "Waterkant cilinderunit", note: "Het verwarmingswater dat rondgaat tussen platenwisselaar, vat en vloeren.", items: [
@@ -868,7 +868,8 @@ const G = [
     { k: "imm", n: "Immersion Heater", c: "imm", unused: 1, x: "Uitgang voor een dompelaar (elektrisch element) in het tapwatervat.",
       now: X => X.imm == null ? "Niet gevonden. Bij de EHST20D-VM2D zit geen dompelaar, dus dat kan zo blijven."
         : X.imm ? "Aan! Onverwacht: bij de EHST20D-VM2D zit normaal geen dompelaar." : "Uit. Bij jouw model zit geen dompelaar, dus dit blijft altijd uit." },
-    { k: "pump2", n: "Water Pump 2 Status", c: "unused", unused: 1, x: "Extra pomp voor zone 1 (uitgang OUT2), alleen nodig bij een mengvat of een lange leiding.", now: X => X.pump2 ? "Aan: dan heeft de installateur wél een tweede pomp geplaatst." : "Uit." },
+    { k: "pump2", n: "Water Pump 2 Status", c: "unused", unused: 1, x: "Uitgang OUT2 van de FTC6 voor een extra pomp in zone 1, bijvoorbeeld bij een mengvat of een lange leiding. De uitgang schakelt mee met de ruimteverwarming, maar bij jou hangt er geen pomp aan: alleen pomp 1 (13) en de sanitaire pomp 18 zijn er.",
+      now: X => X.pump2 ? "Aan: de uitgang schakelt mee met de ruimteverwarming, maar er hangt geen pomp aan. Er draait dus niets extra." : "Uit." },
   ]},
   { title: "Niet in jouw installatie", note: "De Asgard-firmware kent deze functies, maar jouw installatie heeft de onderdelen niet.", items: [
     { k: "dis-cool", dis: 1, n: "Cool Consumed / Delivered / COP", c: "absent", x: "Stroomverbruik en geleverde koeling per dag.", now: () => "Niet van toepassing. De EHST20D verwarmt alleen (de H in EHST)." },
@@ -1382,7 +1383,7 @@ function mountDashboard(host, root) {
     if (e.dis) return `<span class="pill unused">n.v.t.</span>`;
     const id = R[e.k], s = S(id);
     if (!id && e.der && e.der(X) != null) return `<span class="pill${e.der(X) ? " on" : ""}">${e.der(X) ? "aan" : "uit"}</span> <span class="unit">afgeleid</span>`;
-    if (!id) return e.unused ? `<span class="pill unused">uitgeschakeld</span>` : `<span class="pill missing">niet gevonden</span>`;
+    if (!id) return e.unused || e.svc ? `<span class="pill unused">uitgeschakeld</span>` : `<span class="pill missing">niet gevonden</span>`;
     if (!ok(s)) return `<span class="pill missing">${s ? s.state : "ontbreekt"}</span>`;
     if (id.startsWith("binary_sensor.")) return `<span class="pill${s.state === "on" ? " on" : ""}${e.unused ? " unused" : ""}">${s.state === "on" ? "aan" : "uit"}</span>`;
     const v = Number(s.state);                      // tekst (ook "2025.1.0") blijft tekst
@@ -1568,7 +1569,7 @@ function mountDashboard(host, root) {
     // entiteitenlijst
     groups.forEach(g => g.items.forEach(e => {
       const v = root.querySelector(`[data-v="${e.k}"]`); if (v) v.innerHTML = valueHtml(e, X);
-      const i = root.querySelector(`[data-id="${e.k}"]`); if (i) i.textContent = e.dis ? "komt niet voor in jouw installatie" : e.unused && !R[e.k] ? "entiteit niet gevonden of uitgeschakeld"
+      const i = root.querySelector(`[data-id="${e.k}"]`); if (i) i.textContent = e.dis ? "komt niet voor in jouw installatie" : e.svc && !R[e.k] ? "servicewaarde uitgeschakeld (levert deze buitenunit niet)" : e.unused && !R[e.k] ? "entiteit niet gevonden of uitgeschakeld"
         : R[e.k] || (e.der && e.der(X) != null ? `geen eigen entiteit · afgeleid uit ${e.derSrc}` : `niet gevonden · override-sleutel "${e.k}"`);
     }));
 
@@ -1657,14 +1658,15 @@ function mountDashboard(host, root) {
     $$("ul.ents button").forEach(b => b.classList.toggle("on", byKey[b.dataset.e].c === c && (!key || b.dataset.e === key)));
     const e = key ? byKey[key] : null, X = st.X || {};
     const list = Object.values(byKey).filter(x => x.c === c);
-    let h = `<div class="kicker">${e ? (e.dis ? "komt niet voor in jouw installatie" : e.unused && !R[e.k] ? "niet gevonden of uitgeschakeld" : esc(R[e.k] || (e.der ? "afgeleid uit " + e.derSrc : "niet gevonden"))) : esc(d.where)}</div><h2>${e ? e.n : d.name}</h2>`;
+    let h = `<div class="kicker">${e ? (e.dis ? "komt niet voor in jouw installatie" : (e.unused || e.svc) && !R[e.k] ? "niet gevonden of uitgeschakeld" : esc(R[e.k] || (e.der ? "afgeleid uit " + e.derSrc : "niet gevonden"))) : esc(d.where)}</div><h2>${e ? e.n : d.name}</h2>`;
     if (e) {
       h += `<p class="muted">Onderdeel: <b style="color:var(--ink)">${d.name}</b> · ${d.where}</p>`;
       h += `<p>${e.x || d.text}</p>`;
       if (e.x) h += `<p class="muted">${d.text}</p>`;
       const nowTxt = e.now ? e.now({ ...X, v: X[e.k] }) : "";
       h += `<div class="now">Nu: <b>${valueHtml(e, X)}</b>${nowTxt ? "<br>" + nowTxt : ""}</div>`;
-      if (!e.dis && !e.unused && !R[e.k]) h += `<p class="muted">${e.der ? `Deze entiteit is niet gevonden; het panel leidt de stand af uit ${e.derSrc}. Staat hij onder een andere naam in Home Assistant, koppel hem dan` : "Niet gevonden. Koppel hem met de hand"} via Configureren → overrides, bijv. <code>{"${e.k}": "${ENT[e.k]?.d || "sensor"}.${esc(cfg.prefix)}_${ENT[e.k]?.s[0] || "…"}"}</code>.</p>`;
+      if (e.svc && !R[e.k]) h += `<p class="muted">Uitgeschakeld in Home Assistant. Deze servicewaarde levert jouw buitenunit niet; zet dan ook <code>service_codes_enabled</code> van de Asgard uit.</p>`;
+      if (!e.dis && !e.unused && !e.svc && !R[e.k]) h += `<p class="muted">${e.der ? `Deze entiteit is niet gevonden; het panel leidt de stand af uit ${e.derSrc}. Staat hij onder een andere naam in Home Assistant, koppel hem dan` : "Niet gevonden. Koppel hem met de hand"} via Configureren → overrides, bijv. <code>{"${e.k}": "${ENT[e.k]?.d || "sensor"}.${esc(cfg.prefix)}_${ENT[e.k]?.s[0] || "…"}"}</code>.</p>`;
       if (R[e.k] && S(R[e.k])) h += `<button class="hist" data-more="${esc(R[e.k])}">Geschiedenis en details</button>`;
     } else h += `<p>${d.text}</p>`;
     const others = list.filter(x => !e || x.k !== e.k);
