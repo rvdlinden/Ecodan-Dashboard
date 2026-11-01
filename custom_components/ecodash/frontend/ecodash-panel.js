@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.10.3";
+const ECODASH_VERSION = "1.11.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -708,10 +708,10 @@ function schemaSvg(floors, curve) {
 
 /* ------------------------- onderdelen ------------------------------ */
 const C = {
-  outdoor: { name: "Buitenunit SUZ-SWM60 VA", where: "Tuin", text: "De eigenlijke warmtepomp. De ventilator blaast buitenlucht langs de verdamper; het koude koudemiddel neemt daar warmte op, ook als het buiten koud is. Een 6 kW-unit (SWM60). Er loopt geen water naar buiten, alleen twee koudemiddelleidingen. In het schema draait de ventilator mee zodra de compressor draait: volgens de Asgard (frequentie boven 0 Hz) of volgens de kWh-meter (meer dan 150 W op de groep van de buitenunit). Bij vorst en hoge luchtvochtigheid ijst de verdamper aan; dan draait de unit even om en ontdooit hij met warmte uit het water ('Defrost'), wat het schema bij de ventilator meldt." },
+  outdoor: { name: "Buitenunit SUZ-SWM60 VA", where: "Tuin", text: "De eigenlijke warmtepomp. De ventilator blaast buitenlucht langs de verdamper; het koude koudemiddel neemt daar warmte op, ook als het buiten koud is. Een 6 kW-unit (SWM60). Er loopt geen water naar buiten, alleen twee koudemiddelleidingen. In het schema draait de ventilator mee zodra de compressor draait: volgens de Asgard (frequentie boven 0 Hz) of volgens de kWh-meter (meer dan 150 W op de groep van de buitenunit). Bij vorst en hoge luchtvochtigheid ijst de verdamper aan; dan draait de unit even om en ontdooit hij met warmte uit het water ('Defrost'). Het schema meldt dat bij de ventilator en bovenaan; de ventilator staat dan stil en het koudemiddel loopt achteruit." },
   comp: { name: "Compressor", where: "In de buitenunit", text: "Het hart van de warmtepomp. Drukt het koudemiddel samen, waardoor het heet wordt. Het is een inverter: het toerental (in Hz) past zich aan de vraag aan. 0 Hz = uit." },
   th7: { name: "Buitenvoeler TH7", where: "Achterkant buitenunit", text: "Meet de buitentemperatuur. De regelaar gebruikt die voor de stooklijn: hoe kouder het buiten is, hoe warmer het water naar de vloeren gaat." },
-  refr: { name: "Koudemiddelleidingen (R32)", where: "Tussen tuin en technische ruimte", text: "Twee koperen leidingen: een dikke gasleiding (heet gas naar binnen) en een dunne vloeistofleiding (terug naar buiten). Dit is een split-systeem: het koudemiddel komt tot in de cilinderunit. De paarse bolletjes lopen zodra de compressor draait; hoe hoger het toerental, hoe sneller." },
+  refr: { name: "Koudemiddelleidingen (R32)", where: "Tussen tuin en technische ruimte", text: "Twee koperen leidingen: een dikke gasleiding (heet gas naar binnen) en een dunne vloeistofleiding (terug naar buiten). Dit is een split-systeem: het koudemiddel komt tot in de cilinderunit. De paarse bolletjes lopen zodra de compressor draait; hoe hoger het toerental, hoe sneller. Tijdens het ontdooien lopen ze achteruit: de 4-wegklep keert de kringloop dan om en het hete gas gaat naar de buitenunit." },
   hex: { name: "Platenwisselaar koudemiddel-water (3)", where: "In de cilinderunit", text: "Hier wordt koudemiddel-warmte omgezet in warm water. Links stroomt het koudemiddel (paars): het hete gas condenseert en verlaat de wisselaar als vloeistof langs TH2. Rechts stroomt het verwarmingswater van onder naar boven en warmt op. De platen houden beide circuits gescheiden." },
   ftc: { name: "FTC6 regelaar + Asgard", where: "In de cilinderunit (achter het bedieningspaneel)", text: "Het brein. De FTC6 leest alle voelers, stuurt pomp, klep en heaters aan en berekent het energieverbruik. De Asgard is een ESP32-S3 met ESPHome (esphome-ecodan-hp) op de CN105-aansluiting van de FTC6. Hij leest de waarden rechtstreeks uit de regelaar en geeft ze via de ESPHome-integratie binnen enkele seconden aan Home Assistant door, zonder cloud. Ook de buitenunit-waarden (persgas, zuiggas, ventilatortoerental) komen via de FTC6; op sommige buitenunits blijven die leeg." },
   bh1: { name: "Booster heater 1 (2 kW)", where: "In de aanvoerleiding, in de cilinderunit", text: "Een elektrisch verwarmingselement direct in het water. Springt bij als de warmtepomp het alleen niet redt: strenge vorst, ontdooien, of de wekelijkse legionella-run (vat naar ±60 °C). Dit is de dure route: 1 kWh stroom = 1 kWh warmte." },
@@ -721,7 +721,7 @@ const C = {
   filter: { name: "Filter en debietmeter", where: "Retourleiding, in de cilinderunit", text: "Het filter vangt vuil uit het verwarmingswater (onderdeel van het onderhoud). De debietmeter meet hoeveel liter per minuut er stroomt; voor de SWM60 hoort dat tussen 7,2 en 17,2 L/min te liggen. De Asgard geeft het debiet door (Flow Rate); het staat in het schema onder filter · debiet." },
   thw2: { name: "Retourvoeler THW2", where: "Retourleiding, in de cilinderunit", text: "Temperatuur van het water dat terugkomt. Het verschil met de aanvoer (ΔT) laat zien hoeveel warmte er is afgegeven. Bij vloerverwarming is 3–7 °C verschil normaal." },
   tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat (15) met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit: het vat wordt opgewarmd via platenwisselaar 16 en sanitaire pomp 18. Koud leidingwater komt onderin binnen, warm tapwater gaat bovenuit naar de kranen. Maximaal 70 °C. De kleur in het vat volgt de tanktemperatuur." },
-  ctrl: { name: "Hoofdscherm van de bediening", where: "Voorkant cilinderunit (servicehandleiding 9-1)", text: "Nagebouwd display van de bediening, gevuld met de live waarden van de Asgard. Kraan met kader: tapwater wordt nu opgewarmd. Huis met zon: ruimteverwarming zone 1. In het kolommetje ernaast: ▶ in bedrijf, II stand-by. Balkjes bovenaan: de warmtepomp draait. Bliksem: de booster heater staat aan. Vat met blokjes: legionellapreventie. Koffer: vakantiemodus. ECO: tapwater in Eco-stand. Daaronder de kamertemperatuur van de voeler in het bedieningspaneel (Zone 1 Room Temp) en de vattemperatuur (THW5B); groot het aanvoerdoel dat de FTC6 nu gebruikt (Zone 1 Setpoint Value)." },
+  ctrl: { name: "Hoofdscherm van de bediening", where: "Voorkant cilinderunit (servicehandleiding 9-1)", text: "Nagebouwd display van de bediening, gevuld met de live waarden van de Asgard. Kraan met kader: tapwater wordt nu opgewarmd. Huis met zon: ruimteverwarming zone 1. In het kolommetje ernaast: ▶ in bedrijf, II stand-by. Balkjes bovenaan: de warmtepomp draait; een sneeuwvlok op die plek: de buitenunit ontdooit. Bliksem: de booster heater staat aan. Vat met blokjes: legionellapreventie. Koffer: vakantiemodus. ECO: tapwater in Eco-stand. Daaronder de kamertemperatuur van de voeler in het bedieningspaneel (Zone 1 Room Temp) en de vattemperatuur (THW5B); groot het aanvoerdoel dat de FTC6 nu gebruikt (Zone 1 Setpoint Value)." },
   taps: { name: "Tappunten warm water", where: "Keuken (begane grond), wasbak en douche (1e verdieping)", text: "Tijdens het tappen draait er geen pomp. De waterleidingdruk duwt koud water onderin het vat, en dat duwt het warme water bovenuit naar de kraan. Pas als het vat daardoor genoeg afkoelt, gaat de warmtepomp het vat opwarmen; dan draaien pomp 1 en de sanitaire pomp 18. Welke kraan open staat is niet te meten; het schema laat alle drie de tappunten oplichten zodra er warm water getapt wordt." },
   ds18: { name: "1-wire-voeler (DS18B20) op de warmwaterleiding", where: "Idee: op de uitgaande warmwaterleiding van het vat", text: "De Asgard heeft een 1-wire-aansluiting voor maximaal zes DS18B20-voelers. Een voeler op de warmwaterleiding warmt binnen seconden op zodra er getapt wordt. Zo is tappen direct en betrouwbaar te zien, ook zonder dat het vat al merkbaar afkoelt." },
   asgOut: { name: "Servicewaarden buitenunit en pomp (Asgard)", where: "Buitenunit en pomp 1", text: "De Asgard vraagt bij de FTC6 ook servicewaarden van de buitenunit op: persgastemperatuur (TH4), zuiggas, verdamping, ventilatortoerental, oververhitting, onderkoeling, compressorstarts en draaiuren, plus de stand en het verbruik van pomp 1. Die servicecodes werken niet op alle SUZ-buitenunits; blijft een waarde leeg, dan geeft jouw buitenunit hem niet door." },
@@ -1034,6 +1034,8 @@ svg.run-tap .tapfix{stroke:var(--dhw);stroke-width:2.2} svg.run-tap .drops{strok
 @keyframes flow{to{stroke-dashoffset:-14.1}}
 .fl.thin{animation-name:flowt} @keyframes flowt{to{stroke-dashoffset:-11.1}}
 svg.run-refr .f-refr{display:inline;--sp:var(--sp-refr)}
+/* ontdooien: de 4-wegklep keert de kringloop om, het hete gas gaat naar de buitenunit */
+svg.defrost .f-refr{animation-direction:reverse}
 svg.run-prim .f-prim, svg.run-heat .f-heat, svg.run-dhw .f-dhw, svg.run-san .f-san, svg.run-tap .f-tap{display:inline}
 svg.run-eout .f-eout{display:inline;--sp:var(--sp-eout)} svg.run-ein .f-ein{display:inline;--sp:var(--sp-ein)}
 svg.mode-heat .b-dhw, svg.mode-heat .b-san, svg.mode-dhw .b-heat{opacity:.3}
@@ -1157,7 +1159,8 @@ function ctrlSvg(x, y, w) {
     <g class="ic" id="c-leg"><path d="M182,84 h18 v16 a9,4 0 0 1 -18,0 z" fill="none" stroke-width="1.8"/><path d="M186,92 h3 v3 h3 v3 h-3 z" class="lf"/></g>
     <g class="ic off" id="c-sg"><rect x="208" y="82" width="22" height="20" rx="3" class="lf"/><text x="219" y="97" font-size="10" text-anchor="middle" fill="#e4e8e2">SG</text></g>
     <g class="ic" id="c-hp"><rect x="238" y="82" width="34" height="20" rx="2" class="lf"/>
-      <path d="M244,86 v12 M250,86 v12 M256,86 v12 M262,86 v12" stroke="#e4e8e2" stroke-width="2.6"/><path d="M268,84 v16" stroke="#e4e8e2" stroke-width="1"/></g>
+      <g id="c-hp-run"><path d="M244,86 v12 M250,86 v12 M256,86 v12 M262,86 v12" stroke="#e4e8e2" stroke-width="2.6"/><path d="M268,84 v16" stroke="#e4e8e2" stroke-width="1"/></g>
+      <g id="c-hp-def" display="none" stroke="#e4e8e2" stroke-width="1.6" stroke-linecap="round"><path d="M255,84 v16 M248,88 l14,8 M248,96 l14,-8"/><path d="M252,85 l3,2 l3,-2 M252,99 l3,-2 l3,2" fill="none" stroke-width="1.2"/></g></g>
     <g class="ic" id="c-bh"><rect x="280" y="82" width="32" height="20" rx="2" class="lf"/><path d="M299,84 l-8,9 h5 l-3,8 l9,-10 h-5 l3,-7 z" fill="#e4e8e2"/></g>
     <g class="ic off" id="c-buf"><rect x="320" y="82" width="32" height="20" rx="2" class="lf"/></g>
 
@@ -1421,7 +1424,7 @@ function mountDashboard(host, root) {
     st.X = X;
     // schema: stromen
     const run = {
-      "run-refr": X.compRun, "run-fan": X.compRun, "run-pump1": !!X.pump1,
+      "run-refr": X.compRun, "run-fan": X.compRun && !X.defrost, "defrost": !!X.defrost, "run-pump1": !!X.pump1,
       "run-prim": !!X.pump1, "run-heat": !!X.pump1 && !X.dhw, "run-dhw": !!X.pump1 && X.dhw, "run-san": X.san,
       "mode-heat": !!X.pump1 && !X.dhw, "mode-dhw": !!X.pump1 && X.dhw,
       "run-eout": X.pOut > P_IDLE, "run-ein": X.pIn > P_IDLE, "run-bh1": !!X.bh1, "imm-on": !!X.imm,
@@ -1517,7 +1520,9 @@ function mountDashboard(host, root) {
       cl("#c-dhwbox", dhwOn); cl("#c-heatbox", heatOn);
       cl("#c-dhw-run", dhwOn); cl("#c-dhw-sb", !dhwOn); cl("#c-heat-run", heatOn); cl("#c-heat-sb", !heatOn);
       $("#c-leg")?.classList.toggle("off", X.mode !== "legionella");
-      $("#c-hp")?.classList.toggle("off", !X.compRun);
+      $("#c-hp")?.classList.toggle("off", !X.compRun && !X.defrost);
+      $("#c-hp-run")?.setAttribute("display", X.defrost ? "none" : "inline");
+      $("#c-hp-def")?.setAttribute("display", X.defrost ? "inline" : "none");
       $("#c-bh")?.classList.toggle("off", !(X.bh1 || X.imm));
       $("#c-eco")?.setAttribute("opacity", /eco/i.test(X.whMode || "") ? 1 : 0.08);
       $("#c-hol")?.classList.toggle("off", !bin(R.holiday));
@@ -1588,6 +1593,7 @@ function mountDashboard(host, root) {
       b.push(["bad", `<b>Asgard niet bereikbaar:</b> ${down} van ${core.length} hoofdwaarden zijn onbeschikbaar. De waarden in het schema zijn niet actueel.`]);
     else if (st.last && Date.now() - st.last > 45 * 60e3 && core.some(k => S(R[k])?.last_reported))
       b.push(["warn", `<b>Geen nieuwe waarden</b> van de Asgard sinds ${hhmm(st.last)}. Controleer de Asgard (wifi, stroom) en de ESPHome-integratie.`]);
+    if (X.defrost) b.push(["", `<b>De buitenunit ontdooit.</b> De kringloop draait tijdelijk om: de warmtepomp haalt warmte uit het water om het ijs van de verdamper te smelten en de ventilator staat stil. De aanvoer zakt een paar minuten; daarna gaat hij gewoon verder.`]);
     if (X.faultOn) b.push(["bad", `<b>Storing op de Ecodan: ${esc(X.fault)}.</b> Zie het bedieningspaneel of de servicehandleiding voor de betekenis van de code.`]);
     if (X.refErrOn) b.push(["bad", `<b>Koudemiddelcircuit meldt: ${esc(X.refErr)}.</b>`]);
     if (X.opmode != null && !/curve/i.test(X.opmode))
