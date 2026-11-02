@@ -295,7 +295,8 @@ De servicewaarden van de buitenunit: `discharge`, `superheat`, `subcool`, `ou_li
 |---|---|
 | `verdiepingen` | Indeling van de woning (max. 3 verdiepingen, max. 4 kamers per verdieping), van boven naar beneden. Een kamer is een naam of `{naam, entity}` met een temperatuursensor of climate-entiteit; met `entity: false` zoekt het panel niets. Per verdieping beschrijft `lussen` de verdeler (zie *Verdelers en aandrijvingen*) |
 | `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Standaard *In1 Thermostat* van de Asgard. Zonder die entiteit geldt: warmtevraag = een climate-entiteit met `hvac_action: heating`, of anders: de warmtepomp draait op ruimteverwarming |
-| `tapwater_debiet` | Sensor voor de actuele waterdoorstroming. Standaard `sensor.meterkast_watermeter_water_gebruik` (zie *Tapwater en de watermeter*) |
+| `tapwater_debiet` | Sensor voor de actuele waterdoorstroming. Standaard `sensor.meterkast_watermeter_water_gebruik` (zie *Tapwater, tapvoeler en watermeter*) |
+| `tapvoeler` | DS18B20 op de koudwatertoevoer van het vat. Standaard `sensor.technische_ruimte_ecodan_ds18x20_sensor_0` (zie *Tapwater, tapvoeler en watermeter*) |
 
 Een voorbeeld:
 
@@ -324,22 +325,29 @@ verdiepingen:
 tapwater_debiet: sensor.watermeter_actueel_waterverbruik
 ```
 
-### Tapwater en de watermeter
+### Tapwater, tapvoeler en watermeter
 
 De Ecodan neemt zelf geen water uit de waterleiding: het verwarmingscircuit is gesloten. Het vat
-krijgt alleen koud leidingwater binnen als er ergens warm water getapt wordt. De watermeter
-(`sensor.meterkast_watermeter_water_gebruik`) meet al het water in huis, dus ook toilet en koude
-kranen. Daarom toont het schema de stroming door het vat alleen als er water stroomt **én** het
-vat onderin (THW5B) in de laatste 15 minuten minstens 0,5 °C is afgekoeld. Stroomt er water zonder dat het vat
-afkoelt, dan staat bij de koudwaterleiding *niet via het vat*.
+krijgt alleen koud leidingwater binnen als er ergens warm water getapt wordt.
 
-Beperkingen:
-- De stroming verschijnt pas als het afkoelen gemeld is; korte tapbeurten (handen wassen) zie je
-  niet.
-- Tot 15 minuten na een douchebeurt wordt ook een toiletspoeling als *via het vat* getoond.
-- Het groene punt op de warmwaterleiding (*1-wire*) is een optie: een DS18B20-voeler op de
-  1-wire-aansluiting van de Asgard warmt binnen seconden op zodra er getapt wordt. Die voeler zit er
-  nu niet; het panel gebruikt hem nog niet.
+**Met tapvoeler (aanbevolen).** Een DS18B20 op de 1-wire-aansluiting van de Asgard (**3 · X · G**),
+tegen de koudwaterleiding naar het vat geplakt (aansluiting B, boven de inlaatcombinatie, ná het
+T-stuk naar de rest van het huis). Over die leiding stroomt alleen water als er warm water getapt
+wordt; hij zakt dan binnen seconden richting leidingwatertemperatuur. Het schema ziet tappen zodra
+de voeler minstens 1 °C onder zijn hoogste waarde van de laatste 10 minuten zit, en stopt zodra hij
+weer 0,3 °C opwarmt. Standaard is dat `sensor.technische_ruimte_ecodan_ds18x20_sensor_0`; een andere
+voeler koppel je met de override `tapvoeler`. Laat de rol van de voeler in de Asgard op *Unmapped*.
+Isoleer de voeler samen met de leiding, dan reageert hij sneller en zakt hij verder. In het schema
+staat hij als *tapvoeler* op de koudwaterleiding; tijdens tappen kleurt het bolletje blauw.
+
+**Zonder tapvoeler.** De watermeter (`sensor.meterkast_watermeter_water_gebruik`) meet al het water
+in huis, dus ook toilet en koude kranen. Daarom toont het schema de stroming door het vat dan alleen
+als er water stroomt **én** het vat onderin (THW5B) in de laatste 15 minuten minstens 0,5 °C is
+afgekoeld. Korte tapbeurten zie je zo niet, en tot 15 minuten na een douchebeurt wordt ook een
+toiletspoeling als *via het vat* getoond.
+
+Met tapvoeler toont de watermeter alleen nog het debiet. Het groene punt op de warmwaterleiding
+(*1-wire (optie)*) is een plek voor een tweede voeler; die gebruikt het panel nog niet.
 
 ## Hoe het werkt
 

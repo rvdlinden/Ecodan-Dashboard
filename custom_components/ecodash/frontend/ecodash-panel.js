@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.11.0";
+const ECODASH_VERSION = "1.12.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -49,6 +49,8 @@ const ENT = {
   dhw_drop:    { d: "sensor", s: ["dhw_max_temp_drop"] },
   dhw_mode:    { d: "select", s: ["dhw_mode"] },
   leg_temp:    { d: "sensor", s: ["legionella_prevention_temp"] },
+  // DS18B20 op de koudwatertoevoer van het vat (aansluiting B), boven de inlaatcombinatie; override "tapvoeler"
+  tapvoeler:   { d: "sensor", s: ["ds18x20_sensor_0"] },
   // regelaar en energie
   opstate:     { d: "sensor", s: ["operation_mode"] },
   z1_sp:       { d: "sensor", s: ["zone_1_setpoint_value"] },
@@ -107,6 +109,12 @@ const P_RUN = 150;
 // (THW5B) zakt snel; 0,5 °C is ruim boven de langzame afkoeling van het vat in rust.
 const TAP_DROP = 0.5;         // °C afkoeling van het vat ...
 const TAP_WIN = 15 * 60e3;    // ... binnen dit venster
+// Met een tapvoeler op de koudwatertoevoer van het vat: over die leiding stroomt alleen water als er warm water getapt
+// wordt, en dan zakt hij binnen seconden naar leidingwatertemperatuur. Tappen = minstens PROBE_DROP onder het hoogste
+// punt van de laatste PROBE_WIN, en nog niet meer dan PROBE_RISE opgewarmd vanaf het laagste punt (dan is de kraan dicht).
+const PROBE_DROP = 1.0;       // °C
+const PROBE_RISE = 0.3;       // °C
+const PROBE_WIN = 10 * 60e3;
 
 // Stooklijn zoals op het Ecodan-display: [buitentemperatuur, aanvoertemperatuur] per punt. Komt uit Configureren,
 // want de FTC6 geeft de punten niet door (wel het actuele aanvoerdoel, Zone 1 Setpoint Value).
@@ -439,6 +447,12 @@ function schemaSvg(floors, curve) {
     <circle class="sensor asgs" cx="720" cy="160" r="5"/>
     <text class="asg sm" x="742" y="174" text-anchor="end">1-wire (optie)</text>
   </g>
+  <g class="comp" data-c="tapvoeler" tabindex="0" role="button" aria-label="Tapvoeler op de koudwatertoevoer">
+    <rect class="hit" x="664" y="252" width="80" height="34"/>
+    <circle class="sensor" id="probe-dot" cx="735" cy="268" r="5"/>
+    <text class="t s" x="727" y="264" text-anchor="end">tapvoeler</text>
+    <text class="val sm" id="v-probe" x="727" y="277" text-anchor="end"></text>
+  </g>
   <text class="val sm" id="v-tap" x="640" y="188" text-anchor="end"></text>
   <text class="val sm" id="v-tap2" x="640" y="201" text-anchor="end"></text>
   <g class="comp" data-c="dhwsafe" tabindex="0" role="button" aria-label="Overdrukventiel tapwater en terugslagklep">
@@ -723,6 +737,7 @@ const C = {
   tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat (15) met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit: het vat wordt opgewarmd via platenwisselaar 16 en sanitaire pomp 18. Koud leidingwater komt onderin binnen, warm tapwater gaat bovenuit naar de kranen. Maximaal 70 °C. De kleur in het vat volgt de tanktemperatuur." },
   ctrl: { name: "Hoofdscherm van de bediening", where: "Voorkant cilinderunit (servicehandleiding 9-1)", text: "Nagebouwd display van de bediening, gevuld met de live waarden van de Asgard. Kraan met kader: tapwater wordt nu opgewarmd. Huis met zon: ruimteverwarming zone 1. In het kolommetje ernaast: ▶ in bedrijf, II stand-by. Balkjes bovenaan: de warmtepomp draait; een sneeuwvlok op die plek: de buitenunit ontdooit. Bliksem: de booster heater staat aan. Vat met blokjes: legionellapreventie. Koffer: vakantiemodus. ECO: tapwater in Eco-stand. Daaronder de kamertemperatuur van de voeler in het bedieningspaneel (Zone 1 Room Temp) en de vattemperatuur (THW5B); groot het aanvoerdoel dat de FTC6 nu gebruikt (Zone 1 Setpoint Value)." },
   taps: { name: "Tappunten warm water", where: "Keuken (begane grond), wasbak en douche (1e verdieping)", text: "Tijdens het tappen draait er geen pomp. De waterleidingdruk duwt koud water onderin het vat, en dat duwt het warme water bovenuit naar de kraan. Pas als het vat daardoor genoeg afkoelt, gaat de warmtepomp het vat opwarmen; dan draaien pomp 1 en de sanitaire pomp 18. Welke kraan open staat is niet te meten; het schema laat alle drie de tappunten oplichten zodra er warm water getapt wordt." },
+  tapvoeler: { name: "Tapvoeler (DS18B20) op de koudwatertoevoer", where: "Koudwaterleiding naar het vat (aansluiting B), boven de inlaatcombinatie", text: "Een DS18B20 op de 1-wire-aansluiting van de Asgard, tegen de koperen leiding geplakt. Over deze leiding stroomt alleen water als er warm water uit het vat getapt wordt: het koude water voor de rest van het huis splitst er al eerder af. In rust heeft de leiding ongeveer de temperatuur van de technische ruimte; bij tappen zakt hij binnen seconden richting leidingwatertemperatuur en kleurt het bolletje blauw. Zonder isolatie om de voeler reageert hij iets trager en zakt hij minder ver. Tijdens het opwarmen van het vat kan hij juist iets stijgen: het uitzettende water duwt een beetje warm water terug naar de overstort." },
   ds18: { name: "1-wire-voeler (DS18B20) op de warmwaterleiding", where: "Idee: op de uitgaande warmwaterleiding van het vat", text: "De Asgard heeft een 1-wire-aansluiting voor maximaal zes DS18B20-voelers. Een voeler op de warmwaterleiding warmt binnen seconden op zodra er getapt wordt. Zo is tappen direct en betrouwbaar te zien, ook zonder dat het vat al merkbaar afkoelt." },
   asgOut: { name: "Servicewaarden buitenunit en pomp (Asgard)", where: "Buitenunit en pomp 1", text: "De Asgard vraagt bij de FTC6 ook servicewaarden van de buitenunit op: persgastemperatuur (TH4), zuiggas, verdamping, ventilatortoerental, oververhitting, onderkoeling, compressorstarts en draaiuren, plus de stand en het verbruik van pomp 1. Die servicecodes werken niet op alle SUZ-buitenunits; blijft een waarde leeg, dan geeft jouw buitenunit hem niet door." },
   hex16: { name: "Platenwisselaar water-water (16)", where: "In de cilinderunit, naast het vat", text: "Het vat heeft geen spiraal. Staat de 3-wegklep (5) op tapwater, dan stroomt het verwarmingswater door de linkerhelft van deze tweede platenwisselaar en via de debietmeter (11) terug naar de warmtepomp. Door de rechterhelft pompt de sanitaire pomp (18) koud water van onderin het vat; dat gaat opgewarmd via de kalkvanger (17) en pomp 18 terug het vat in en komt vrij net onder THW5B. Het verwarmingswater en het drinkwater raken elkaar niet." },
@@ -814,8 +829,12 @@ const G = [
     { k: "dhw_drop", n: "DHW Max Temp Drop", c: "thw5", x: "Hoeveel het vat onder de ingestelde waarde mag zakken voordat de warmtepomp het opnieuw opwarmt (hysterese)." },
     { k: "dhw_mode", n: "DHW Mode", c: "ctrl", x: "Normal of Eco. In Eco warmt de warmtepomp het vat rustiger op: zuiniger, maar het duurt langer." },
     { k: "leg_temp", n: "Legionella Prevention Temp", c: "tank", x: "Temperatuur waar het vat bij de legionella-run naartoe wordt gebracht. De booster heater duwt het laatste stuk." },
-    { k: "tap", n: "Waterverbruik (watermeter)", c: "taps", x: `De watermeter in de meterkast meet al het water in huis, ook voor toilet en koude kranen. Het schema toont alleen stroming door het vat als het vat onderin tegelijk minstens ${fmt(TAP_DROP, 1)} °C afkoelt binnen ${TAP_WIN / 60e3} minuten. Korte tapbeurten (handen wassen) zie je daardoor niet.`,
-      now: X => !X.tapFlow ? "Er stroomt nu geen water." : X.hotDraw ? `Er wordt warm water getapt: het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld.` : "Er stroomt water, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan." },
+    { k: "tapvoeler", n: "Tapvoeler koudwatertoevoer (DS18B20)", c: "tapvoeler", opt: 1, x: `DS18B20 aan de Asgard op de koudwaterleiding naar het vat (aansluiting B), boven de inlaatcombinatie. Daar stroomt alleen water als er warm water getapt wordt. Het schema ziet tappen zodra de voeler minstens ${fmt(PROBE_DROP, 1)} °C onder zijn hoogste waarde van de laatste ${PROBE_WIN / 60e3} minuten zakt, en stopt zodra hij weer ${fmt(PROBE_RISE, 1)} °C opwarmt.`,
+      now: X => X.probe == null ? "" : X.probeDraw ? `Er wordt warm water getapt: de voeler is ${fmt(X.probeDrop, 1)} °C gezakt doordat koud leidingwater het vat in stroomt.`
+        : X.probeDrop >= PROBE_DROP ? "De kraan is dicht; de leiding warmt weer op naar de temperatuur van de technische ruimte." : "In rust: er stroomt geen water naar het vat." },
+    { k: "tap", n: "Waterverbruik (watermeter)", c: "taps", x: `De watermeter in de meterkast meet al het water in huis, ook voor toilet en koude kranen. Met de tapvoeler bepaalt die voeler of er warm water getapt wordt en toont de watermeter alleen het debiet. Zonder tapvoeler toont het schema stroming door het vat als het vat onderin tegelijk minstens ${fmt(TAP_DROP, 1)} °C afkoelt binnen ${TAP_WIN / 60e3} minuten; korte tapbeurten zie je dan niet.`,
+      now: X => !X.tapFlow ? "Er stroomt nu geen water." : X.hotDraw ? (X.drawSrc === "voeler" ? "Er wordt warm water getapt (volgens de tapvoeler)." : `Er wordt warm water getapt: het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld.`)
+        : "Er stroomt water, maar niet via het vat: waarschijnlijk toilet of een koude kraan." },
   ]},
   { title: "Regelaar en energie", note: "Waarden die de FTC6 berekent of over zichzelf rapporteert.", items: [
     { k: "opstate", n: "Operation Mode", c: "ftc", x: "Wat de FTC6 nu doet: Off, Space Heating, Heating Water (tapwater), Legionella Prevention of Frost Protection.",
@@ -1017,6 +1036,7 @@ svg.run-san .pump18{stroke:var(--accent);stroke-width:2.4}
 .asg{font-family:var(--f-mono);font-size:11px;font-weight:500;fill:var(--asg);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
 .asg.sm{font-size:9.5px}
 .sensor.asgs{stroke:var(--asg);stroke-width:1.6}
+.sensor.cold-on{fill:var(--cold)}
 .tapfix{stroke:var(--ink)} .drops{stroke:var(--muted)}
 svg.run-tap .tapfix{stroke:var(--dhw);stroke-width:2.2} svg.run-tap .drops{stroke:var(--cold)}
 .tplate{fill:var(--plate);stroke:var(--plate-edge);stroke-width:1.2;filter:url(#bevel)}
@@ -1264,7 +1284,7 @@ function mountDashboard(host, root) {
   $("#menu").appendChild(host._menu);
 
   const svg = $("#schema"), detail = $("#detail");
-  const st = { open: {}, sel: null, selKey: null, sig: "", measured: { out: null, in: null, src: null }, midnight: null, timers: [], tankHist: [] };
+  const st = { open: {}, sel: null, selKey: null, sig: "", measured: { out: null, in: null, src: null }, midnight: null, timers: [], tankHist: [], probeHist: [] };
   const S = id => (id ? host._hass.states[id] : undefined);
   const ok = s => s && s.state !== "unavailable" && s.state !== "unknown";
   const num = id => { const s = S(id); if (!ok(s)) return null; const v = parseFloat(s.state); return isFinite(v) ? v : null; };
@@ -1283,6 +1303,16 @@ function mountDashboard(host, root) {
     const main = !f.main || !f.kamers.length || f.kamers.some((_, j) => roomOpen(j));
     return f.loops.map(l => main && (!l.act || f.main || l.ctl == null || roomOpen(l.ctl)));
   });
+
+  // houdt per entiteit de waarden van het laatste venster bij (plus één punt ervoor als beginstand)
+  function track(hist, id, win) {
+    const s = S(id);
+    if (ok(s)) { const t = Date.parse(s.last_changed) || Date.now(), v = parseFloat(s.state);
+      if (isFinite(v) && (!hist.length || hist[hist.length - 1].t !== t)) hist.push({ t, v }); }
+    const from = Date.now() - win;
+    while (hist.length > 1 && hist[1].t <= from) hist.shift();
+    return hist;
+  }
 
   /* entiteitenlijst */
   const byKey = {};
@@ -1322,13 +1352,19 @@ function mountDashboard(host, root) {
     X.eOutTot = kwh(R.e_out); X.eInTot = kwh(R.e_in);
     X.tapFlow = num(R.tap);
     // afkoeling van het vat in het laatste venster, uit de bijgehouden THW5B-historie
-    const ts = S(R.tank), th = st.tankHist;
-    if (ok(ts)) { const t = Date.parse(ts.last_changed) || Date.now(), v = parseFloat(ts.state);
-      if (isFinite(v) && (!th.length || th[th.length - 1].t !== t)) th.push({ t, v }); }
-    const from = Date.now() - TAP_WIN;
-    while (th.length > 1 && th[1].t <= from) th.shift();               // houd één punt vóór het venster als beginstand
+    const th = track(st.tankHist, R.tank, TAP_WIN);
     X.tankDrop = th.length && X.tank != null ? Math.max(...th.map(p => p.v)) - X.tank : 0;
-    X.hotDraw = X.tapFlow > 0 && X.tankDrop >= TAP_DROP;
+    // tapvoeler op de koudwatertoevoer: snel en zonder watermeter; anders watermeter + afkoelen van het vat
+    X.probe = num(R.tapvoeler);
+    const prh = track(st.probeHist, R.tapvoeler, PROBE_WIN);
+    if (X.probe != null && prh.length) {
+      const vs = prh.map(p => p.v);
+      X.probeDrop = Math.max(...vs) - X.probe;
+      X.probeDraw = X.probeDrop >= PROBE_DROP && X.probe - Math.min(...vs) <= PROBE_RISE;
+      X.drawSrc = "voeler"; X.hotDraw = X.probeDraw;
+    } else {
+      X.drawSrc = "watermeter"; X.hotDraw = X.tapFlow > 0 && X.tankDrop >= TAP_DROP;
+    }
     X.curveTarget = X.buiten == null ? null : curveAt(CURVE, X.buiten);
     X.compRun = X.freq > 0 || !!X.compBin || X.pOut > P_RUN;
     X.compByMeter = X.compRun && !(X.freq > 0) && !X.compBin;         // alleen de kWh-meter ziet hem draaien
@@ -1386,7 +1422,7 @@ function mountDashboard(host, root) {
     if (e.dis) return `<span class="pill unused">n.v.t.</span>`;
     const id = R[e.k], s = S(id);
     if (!id && e.der && e.der(X) != null) return `<span class="pill${e.der(X) ? " on" : ""}">${e.der(X) ? "aan" : "uit"}</span> <span class="unit">afgeleid</span>`;
-    if (!id) return e.unused || e.svc ? `<span class="pill unused">uitgeschakeld</span>` : `<span class="pill missing">niet gevonden</span>`;
+    if (!id) return e.unused || e.svc ? `<span class="pill unused">uitgeschakeld</span>` : e.opt ? `<span class="pill unused">geen voeler</span>` : `<span class="pill missing">niet gevonden</span>`;
     if (!ok(s)) return `<span class="pill missing">${s ? s.state : "ontbreekt"}</span>`;
     if (id.startsWith("binary_sensor.")) return `<span class="pill${s.state === "on" ? " on" : ""}${e.unused ? " unused" : ""}">${s.state === "on" ? "aan" : "uit"}</span>`;
     const v = Number(s.state);                      // tekst (ook "2025.1.0") blijft tekst
@@ -1479,7 +1515,9 @@ function mountDashboard(host, root) {
     setT("v-tank2", fixedNo(X.tank2) ? "geen voeler" : deg(X.tank2), fixedNo(X.tank2) || X.tank2 == null ? "off" : "");
     const lpm = v => fmt(v, v < 10 ? 1 : 0) + " " + (unitOf("tap") || "l/min");
     setT("v-tap", !X.tapFlow ? "" : lpm(X.tapFlow), X.hotDraw ? "" : "off");
-    setT("v-tap2", !X.tapFlow ? "" : X.hotDraw ? "via het vat" : "niet via het vat", X.hotDraw ? "" : "off");
+    setT("v-tap2", X.hotDraw ? (X.tapFlow ? "via het vat" : "warm water getapt") : X.tapFlow ? "niet via het vat" : "", X.hotDraw ? "" : "off");
+    setT("v-probe", X.probe == null ? "" : deg(X.probe), X.hotDraw && X.drawSrc === "voeler" ? "" : "off");
+    $("#probe-dot")?.classList.toggle("cold-on", X.hotDraw && X.drawSrc === "voeler");
     setT("v-target", X.target == null ? "" : `doel ${fmt(X.target, 0)} °C${X.whMode ? " · " + X.whMode : ""}`);
     setT("v-wifi", X.wifi == null ? "–" : fmt(X.wifi, 0) + " dBm", X.wifi != null && X.wifi < -75 ? "warnv" : "");
     setT("v-z1mix", `${deg(X.z1_feed)} / ${deg(X.z1_return)}`, "off");
@@ -1575,7 +1613,7 @@ function mountDashboard(host, root) {
     groups.forEach(g => g.items.forEach(e => {
       const v = root.querySelector(`[data-v="${e.k}"]`); if (v) v.innerHTML = valueHtml(e, X);
       const i = root.querySelector(`[data-id="${e.k}"]`); if (i) i.textContent = e.dis ? "komt niet voor in jouw installatie" : e.svc && !R[e.k] ? "servicewaarde uitgeschakeld (levert deze buitenunit niet)" : e.unused && !R[e.k] ? "entiteit niet gevonden of uitgeschakeld"
-        : R[e.k] || (e.der && e.der(X) != null ? `geen eigen entiteit · afgeleid uit ${e.derSrc}` : `niet gevonden · override-sleutel "${e.k}"`);
+        : R[e.k] || (e.opt ? `optioneel · override-sleutel "${e.k}"` : e.der && e.der(X) != null ? `geen eigen entiteit · afgeleid uit ${e.derSrc}` : `niet gevonden · override-sleutel "${e.k}"`);
     }));
 
     renderBanners(X);
@@ -1631,7 +1669,8 @@ function mountDashboard(host, root) {
     }
     const kamers = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => [r.naam, X.rooms[fi]?.[j]?.t, r.sp])).filter(([, t]) => t != null);
     if (kamers.length) li.push(`<b>Kamers (gemeten / ingesteld):</b> ${kamers.map(([n, t, sp]) => `${esc(n)} ${fmt(t, 1)}${sp == null ? "" : " / " + fmt(sp, 1)} °C`).join(" · ")}.`);
-    if (X.hotDraw) li.push(`<b>Er wordt warm water getapt.</b> De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))} en het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld: er stroomt koud leidingwater het vat in.`);
+    if (X.hotDraw && X.drawSrc === "voeler") li.push(`<b>Er wordt warm water getapt.</b> De tapvoeler op de koudwatertoevoer is ${fmt(X.probeDrop, 1)} °C gezakt (nu ${deg(X.probe)}): er stroomt koud leidingwater het vat in${X.tapFlow > 0 ? `; de watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))}` : ""}.`);
+    else if (X.hotDraw) li.push(`<b>Er wordt warm water getapt.</b> De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))} en het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld: er stroomt koud leidingwater het vat in.`);
     else if (X.tapFlow > 0) li.push(`De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))}, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan, dus niet via de Ecodan.`);
     if (X.tank != null && X.target != null && X.mode !== "tapwater" && X.mode !== "legionella") {
       const d = X.target - X.tank;
@@ -1851,20 +1890,20 @@ function mountDashboard(host, root) {
     st.sig = sig; render();
   }
   host._onHass = schedule;
-  /* tanktemperatuur van het laatste venster, zodat afkoeling ook direct na het openen herkend wordt */
-  async function loadTankHist() {
-    if (!R.tank) return;
+  /* tanktemperatuur en tapvoeler van het laatste venster, zodat tappen ook direct na het openen herkend wordt */
+  async function loadHist(id, win, key) {
+    if (!id) return;
     try {
-      const start = new Date(Date.now() - TAP_WIN);
-      const res = await host._hass.callWS({ type: "history/history_during_period", start_time: start.toISOString(), entity_ids: [R.tank],
+      const start = new Date(Date.now() - win);
+      const res = await host._hass.callWS({ type: "history/history_during_period", start_time: start.toISOString(), entity_ids: [id],
         include_start_time_state: true, minimal_response: true, no_attributes: true, significant_changes_only: false });
-      const pts = (res?.[R.tank] || []).map(h => ({ t: h.lu != null ? h.lu * 1000 : Date.parse(h.last_changed), v: parseFloat(h.s ?? h.state) }))
+      const pts = (res?.[id] || []).map(h => ({ t: h.lu != null ? h.lu * 1000 : Date.parse(h.last_changed), v: parseFloat(h.s ?? h.state) }))
         .filter(p => isFinite(p.v) && isFinite(p.t));
-      const live = st.tankHist.filter(p => !pts.length || p.t > pts[pts.length - 1].t);
-      st.tankHist = pts.concat(live); st.sig = ""; schedule();
-    } catch (e) { console.warn("Ecodan-panel: historie tanktemperatuur niet beschikbaar", e); }
+      const live = st[key].filter(p => !pts.length || p.t > pts[pts.length - 1].t);
+      st[key] = pts.concat(live); st.sig = ""; schedule();
+    } catch (e) { console.warn("Ecodan-panel: historie van " + id + " niet beschikbaar", e); }
   }
-  render(); loadMeasured(); loadTankHist();
+  render(); loadMeasured(); loadHist(R.tank, TAP_WIN, "tankHist"); loadHist(R.tapvoeler, PROBE_WIN, "probeHist");
   st.timers.push(setInterval(() => {
     const mid = new Date(); mid.setHours(0, 0, 0, 0);
     if (mid.getTime() !== st.midnight || st.measured.src === "statistiek") loadMeasured();   // nieuwe dag, of statistiek bijwerken
