@@ -296,7 +296,7 @@ De servicewaarden van de buitenunit: `discharge`, `superheat`, `subcool`, `ou_li
 | `verdiepingen` | Indeling van de woning (max. 3 verdiepingen, max. 4 kamers per verdieping), van boven naar beneden. Een kamer is een naam of `{naam, entity}` met een temperatuursensor of climate-entiteit; met `entity: false` zoekt het panel niets. Per verdieping beschrijft `lussen` de verdeler (zie *Verdelers en aandrijvingen*) |
 | `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Standaard *In1 Thermostat* van de Asgard. Zonder die entiteit geldt: warmtevraag = een climate-entiteit met `hvac_action: heating`, of anders: de warmtepomp draait op ruimteverwarming |
 | `tapwater_debiet` | Sensor voor de actuele waterdoorstroming. Standaard `sensor.meterkast_watermeter_water_gebruik` (zie *Tapwater, tapvoeler en watermeter*) |
-| `tapvoeler` | DS18B20 op de koudwatertoevoer van het vat. Standaard `sensor.technische_ruimte_ecodan_ds18x20_sensor_0` (zie *Tapwater, tapvoeler en watermeter*) |
+| `tapvoeler` | DS18B20 op de koudwatertoevoer van het vat. Standaard een voeler die op `koudwatertoevoer` eindigt, anders `sensor.technische_ruimte_ecodan_ds18x20_sensor_0` (zie *Tapwater, tapvoeler en watermeter*) |
 
 Een voorbeeld:
 
@@ -335,8 +335,9 @@ tegen de koudwaterleiding naar het vat geplakt (aansluiting B, boven de inlaatco
 T-stuk naar de rest van het huis). Over die leiding stroomt alleen water als er warm water getapt
 wordt; hij zakt dan binnen seconden richting leidingwatertemperatuur. Het schema ziet tappen zodra
 de voeler minstens 1 °C onder zijn hoogste waarde van de laatste 10 minuten zit, en stopt zodra hij
-weer 0,3 °C opwarmt. Standaard is dat `sensor.technische_ruimte_ecodan_ds18x20_sensor_0`; een andere
-voeler koppel je met de override `tapvoeler`. Laat de rol van de voeler in de Asgard op *Unmapped*.
+weer 0,3 °C opwarmt. Het panel zoekt eerst een voeler die op `koudwatertoevoer` eindigt (bijvoorbeeld
+`sensor.technische_ruimte_ecodan_ds18x20_sensor_0_koudwatertoevoer`), anders
+`sensor.technische_ruimte_ecodan_ds18x20_sensor_0`; een andere voeler koppel je met de override `tapvoeler`. Laat de rol van de voeler in de Asgard op *Unmapped*.
 Isoleer de voeler samen met de leiding, dan reageert hij sneller en zakt hij verder. In het schema
 staat hij als *tapvoeler* op de koudwaterleiding; tijdens tappen kleurt het bolletje blauw.
 

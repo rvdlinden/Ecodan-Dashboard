@@ -49,8 +49,9 @@ const ENT = {
   dhw_drop:    { d: "sensor", s: ["dhw_max_temp_drop"] },
   dhw_mode:    { d: "select", s: ["dhw_mode"] },
   leg_temp:    { d: "sensor", s: ["legionella_prevention_temp"] },
-  // DS18B20 op de koudwatertoevoer van het vat (aansluiting B), boven de inlaatcombinatie; override "tapvoeler"
-  tapvoeler:   { d: "sensor", s: ["ds18x20_sensor_0"] },
+  // DS18B20 op de koudwatertoevoer van het vat (aansluiting B), boven de inlaatcombinatie; override "tapvoeler".
+  // Eerst een voeler met "koudwatertoevoer" in de naam, anders de eerste voeler op de 1-wire-bus.
+  tapvoeler:   { d: "sensor", s: ["ds18x20_sensor_0_koudwatertoevoer", "koudwatertoevoer", "ds18x20_sensor_0"] },
   // regelaar en energie
   opstate:     { d: "sensor", s: ["operation_mode"] },
   z1_sp:       { d: "sensor", s: ["zone_1_setpoint_value"] },
