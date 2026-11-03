@@ -42,8 +42,9 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
   - Stroom (geel) van de meterkast naar de buiten- en binnenunit zodra een groep meer dan 30 W
     (stand-by) gebruikt; sneller bij meer vermogen.
   - Tapwater: koud leidingwater het vat in en warm water naar de keuken (begane grond) en de
-    wasbak en douche (1e verdieping), alleen als er echt warm water getapt wordt (zie *Tapwater en
-    de watermeter*). Dan lichten alle drie de tappunten op; welke kraan open staat is niet te meten.
+    badkamer (1e verdieping, wasbak en douche samen), alleen als er echt warm water getapt wordt (zie
+    *Tapwater, tapvoeler en watermeter*). Dan lichten beide tappunten op; welke kraan open staat is
+    niet te meten.
     Tijdens het tappen draait er geen pomp: de waterleidingdruk duwt het warme water naar de kraan.
   - De booster heater gloeit als hij aan staat; de kleur in het tapwatervat volgt de
     tanktemperatuur.
