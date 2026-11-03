@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.15.0";
+const ECODASH_VERSION = "1.15.1";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -446,7 +446,7 @@ function schemaSvg(floors, curve) {
   <circle class="fill-ink" cx="450" cy="448" r="3"/>
 
   <!-- tapwater: koud leidingwater (terugslag 33) onderin het vat, warm tapwater (overdruk 21) bovenuit naar de kranen -->
-  ${pipe("M772,196 H735 V680 H720", "cold", "tap")}
+  ${pipe("M772,196 H735 V652 H720", "cold", "tap")}
   <path class="pipe cold thin" d="M768,190 L758,196 L768,202"/>
   ${pipe("M650,300 V160 H788 V232 a8,8 0 0 1 0,16 V322 a8,8 0 0 1 0,16 V733", "dhw", "tap")}
   <text class="t s" x="662" y="152">warm tapwater</text>
@@ -593,7 +593,7 @@ function schemaSvg(floors, curve) {
     <text class="t s" x="536" y="511" text-anchor="middle">tapwater</text>
     ${nb(536, 525, 16)}
   </g>
-  ${pipe("M580,640 H566 V470 H556", "cold", "san", true)}
+  ${pipe("M580,642 H566 V470 H556", "cold", "san", true)}
   ${pipe("M556,412 H566 V325 H580", "dhw", "san", true)}
   <g class="comp" data-c="scale" tabindex="0" role="button" aria-label="Kalkvanger">
     <rect class="hit" x="540" y="356" width="34" height="34"/>
@@ -644,12 +644,18 @@ function schemaSvg(floors, curve) {
     <rect id="tankfill" x="584" y="304" width="132" height="392" rx="30"/>
     <rect class="tankshade" x="584" y="304" width="132" height="392" rx="30"/>
     <rect class="shape" x="580" y="300" width="140" height="400" rx="34" style="fill:none"/>
-    <text class="t b" x="650" y="672" text-anchor="middle">tapwatervat</text>
-    <text class="t b" x="650" y="687" text-anchor="middle">200 L</text>
-    <text class="val sm" id="v-target" x="660" y="320" text-anchor="middle"></text>
-    ${nb(650, 650, 15)}
+    <text class="t b" x="650" y="550" text-anchor="middle">tapwatervat</text>
+    <text class="t b" x="650" y="565" text-anchor="middle">200 L</text>
+    <text class="val sm" id="v-target" x="660" y="372" text-anchor="middle"></text>
+    ${nb(650, 578, 15)}
   </g>
   ${pipe("M580,325 H598 V506 a8,8 0 0 0 8,8", "dhw", "san", true)}
+  <!-- in het vat, zoals Figure 8.2: warm tapwater wordt helemaal bovenin opgenomen, koud leidingwater komt via een
+       leiding met verdeelplaat bij de bodem binnen en de aanzuiging naar wisselaar 16 neemt het koudste water onderin -->
+  ${pipe("M694,312 V322 a24,24 0 0 1 -24,24 H664 a14,14 0 0 1 -14,-14 V300", "dhw", "tap")}
+  ${pipe("M720,652 H708 a26,26 0 0 0 -26,26 V690", "cold", "tap")}
+  <path class="pipe cold" d="M673,694 h18"/>
+  ${pipe("M640,692 V682 a40,40 0 0 0 -40,-40 H580", "cold", "san", true)}
   <g class="comp" data-c="imm" tabindex="0" role="button" aria-label="Dompelaar, niet ingebouwd">
     <rect class="ghost" id="imm-shape" x="606" y="590" width="88" height="12" rx="3"/>
     <text class="t s" x="650" y="618" text-anchor="middle">dompelaar n.v.t.</text>
@@ -743,7 +749,7 @@ const C = {
   valve: { name: "3-wegklep", where: "In de cilinderunit", text: "Wissel tussen twee bestemmingen. Stand 'verwarming': water gaat naar de vloerverwarming. Stand 'tapwater': water gaat door platenwisselaar 16 naast het vat. Het schema kleurt de actieve uitgang en dimt de tak die niet in gebruik is." },
   filter: { name: "Filter en debietmeter", where: "Retourleiding, in de cilinderunit", text: "Het filter vangt vuil uit het verwarmingswater (onderdeel van het onderhoud). De debietmeter meet hoeveel liter per minuut er stroomt; voor de SWM60 hoort dat tussen 7,2 en 17,2 L/min te liggen. De Asgard geeft het debiet door (Flow Rate); het staat in het schema onder filter · debiet." },
   thw2: { name: "Retourvoeler THW2", where: "Retourleiding, in de cilinderunit", text: "Temperatuur van het water dat terugkomt. Het verschil met de aanvoer (ΔT) laat zien hoeveel warmte er is afgegeven. Bij vloerverwarming is 3–7 °C verschil normaal." },
-  tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat (15) met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit: het vat wordt opgewarmd via platenwisselaar 16 en sanitaire pomp 18. Koud leidingwater komt onderin binnen, warm tapwater gaat bovenuit naar de kranen. Maximaal 70 °C. De kleur in het vat volgt de tanktemperatuur." },
+  tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat (15) met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit: het vat wordt opgewarmd via platenwisselaar 16 en sanitaire pomp 18. Koud leidingwater komt via een leiding met verdeelplaat bij de bodem binnen; warm tapwater wordt via een gebogen leiding helemaal bovenin opgenomen en gaat bovenuit naar de kranen. De aanzuiging naar wisselaar 16 neemt het koudste water bij de bodem. Maximaal 70 °C. De kleur in het vat volgt de tanktemperatuur." },
   ctrl: { name: "Hoofdscherm van de bediening", where: "Voorkant cilinderunit (servicehandleiding 9-1)", text: "Nagebouwd display van de bediening, gevuld met de live waarden van de Asgard. Net als op het echte display staan alleen de iconen die nu actief zijn. Kraan met kader: tapwater wordt nu opgewarmd; huis met zon: ruimteverwarming (één zone). Ernaast: ▶ in bedrijf, II stand-by, ■ geblokkeerd; het klokje bij tapwater betekent dat een schema tapwater nu blokkeert (DHW Prohibit). Bovenaan: balkjes = de warmtepomp draait, sneeuwvlok = de buitenunit ontdooit, bliksem = de booster heater staat aan, vat met blokjes = legionellapreventie, koffer = vakantiemodus. Daaronder de vattemperatuur (THW5B). Groot staat bij regeling op de stooklijn de verschuiving van de lijn (uit Configureren), anders het aanvoerdoel van de FTC6. In stand-by staat daar het aan/uit-symbool en is het groene lampje uit. De stille stand (quiet mode) geeft de Asgard niet door; die staat hier niet bij." },
   taps: { name: "Tappunten warm water", where: "Keuken (begane grond), wasbak en douche (1e verdieping)", text: "Tijdens het tappen draait er geen pomp. De waterleidingdruk duwt koud water onderin het vat, en dat duwt het warme water bovenuit naar de kraan. Pas als het vat daardoor genoeg afkoelt, gaat de warmtepomp het vat opwarmen; dan draaien pomp 1 en de sanitaire pomp 18. Welke kraan open staat is niet te meten; het schema laat alle drie de tappunten oplichten zodra er warm water getapt wordt." },
   tapvoeler: { name: "Tapvoeler (DS18B20) op de koudwatertoevoer", where: "Koudwaterleiding naar het vat (aansluiting B), boven de inlaatcombinatie", text: "Een DS18B20 op de 1-wire-aansluiting van de Asgard, tegen de koperen leiding geplakt. Over deze leiding stroomt alleen water als er warm water uit het vat getapt wordt: het koude water voor de rest van het huis splitst er al eerder af. In rust heeft de leiding ongeveer de temperatuur van de technische ruimte; bij tappen zakt hij binnen seconden richting leidingwatertemperatuur en kleurt het bolletje blauw. Zonder isolatie om de voeler reageert hij iets trager en zakt hij minder ver. Tijdens het opwarmen van het vat kan hij juist iets stijgen: het uitzettende water duwt een beetje warm water terug naar de overstort." },
