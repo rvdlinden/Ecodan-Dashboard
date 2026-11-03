@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.12.0";
+const ECODASH_VERSION = "1.13.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -101,6 +101,11 @@ const DEFAULT_FLOORS = [
 // Kraan open/dicht per kamer, afgeleid uit gemeten tegen ingesteld: open vanaf ROOM_HYST onder de ingestelde waarde,
 // dicht vanaf ROOM_HYST erboven, daartussen blijft de vorige stand staan (de thermostaat schakelt met hysterese).
 const ROOM_HYST = 0.2;        // °C
+// Melding "geen warmtevraag": een kamer staat minstens NODEMAND_DIFF onder de ingestelde waarde en IN1 staat uit, en
+// dat allebei al NODEMAND_MIN lang. Dan komt de vraag van de thermostaat niet bij de FTC6 aan (bijv. een vastgelopen
+// Alpha-basisstation).
+const NODEMAND_DIFF = 0.4;    // °C
+const NODEMAND_MIN = 30;      // minuten
 const P_IDLE = 30;            // W: daaronder is een groep in stand-by (regelaar, wifi)
 // Boven dit vermogen op de groep van de buitenunit draaien compressor en ventilator. Vangnet voor als de frequentie
 // (nog) ontbreekt, bijvoorbeeld net na een herstart van de Asgard.
@@ -1285,7 +1290,7 @@ function mountDashboard(host, root) {
   $("#menu").appendChild(host._menu);
 
   const svg = $("#schema"), detail = $("#detail");
-  const st = { open: {}, sel: null, selKey: null, sig: "", measured: { out: null, in: null, src: null }, midnight: null, timers: [], tankHist: [], probeHist: [] };
+  const st = { open: {}, sel: null, selKey: null, sig: "", measured: { out: null, in: null, src: null }, midnight: null, timers: [], hist: {} };
   const S = id => (id ? host._hass.states[id] : undefined);
   const ok = s => s && s.state !== "unavailable" && s.state !== "unknown";
   const num = id => { const s = S(id); if (!ok(s)) return null; const v = parseFloat(s.state); return isFinite(v) ? v : null; };
@@ -1306,8 +1311,8 @@ function mountDashboard(host, root) {
   });
 
   // houdt per entiteit de waarden van het laatste venster bij (plus één punt ervoor als beginstand)
-  function track(hist, id, win) {
-    const s = S(id);
+  function track(key, id, win) {
+    const hist = st.hist[key] || (st.hist[key] = []), s = S(id);
     if (ok(s)) { const t = Date.parse(s.last_changed) || Date.now(), v = parseFloat(s.state);
       if (isFinite(v) && (!hist.length || hist[hist.length - 1].t !== t)) hist.push({ t, v }); }
     const from = Date.now() - win;
@@ -1353,11 +1358,11 @@ function mountDashboard(host, root) {
     X.eOutTot = kwh(R.e_out); X.eInTot = kwh(R.e_in);
     X.tapFlow = num(R.tap);
     // afkoeling van het vat in het laatste venster, uit de bijgehouden THW5B-historie
-    const th = track(st.tankHist, R.tank, TAP_WIN);
+    const th = track("tank", R.tank, TAP_WIN);
     X.tankDrop = th.length && X.tank != null ? Math.max(...th.map(p => p.v)) - X.tank : 0;
     // tapvoeler op de koudwatertoevoer: snel en zonder watermeter; anders watermeter + afkoelen van het vat
     X.probe = num(R.tapvoeler);
-    const prh = track(st.probeHist, R.tapvoeler, PROBE_WIN);
+    const prh = track("probe", R.tapvoeler, PROBE_WIN);
     if (X.probe != null && prh.length) {
       const vs = prh.map(p => p.v);
       X.probeDrop = Math.max(...vs) - X.probe;
@@ -1384,6 +1389,7 @@ function mountDashboard(host, root) {
     X.rooms = R.floors.map((f, fi) => f.kamers.map((r, j) => {
       const s = S(r.ent); if (!ok(s)) return null;
       const climate = r.ent.startsWith("climate."), a = s.attributes;
+      if (!climate) track(`room-${fi}-${j}`, r.ent, 2 * NODEMAND_MIN * 60e3);
       const t = climate ? parseFloat(a.current_temperature) : parseFloat(s.state);
       let heat = null;
       if (climate) heat = a.hvac_action === "heating";
@@ -1398,6 +1404,20 @@ function mountDashboard(host, root) {
     const vr = bin(R.vraag), clim = X.rooms.flat().filter(r => r && r.climate);
     X.vraagSrc = vr != null ? "signaal" : clim.length ? "thermostaat" : "afgeleid";
     X.vraag = vr != null ? vr : clim.length ? clim.some(r => r.heat) : X.mode === "verwarming";
+    // kamers die al lang te koud zijn terwijl IN1 uit staat
+    X.noDemand = [];
+    if (vr === false) {
+      const now = Date.now();
+      X.in1OffSince = Date.parse(S(R.vraag).last_changed) || now;
+      R.floors.forEach((f, fi) => f.kamers.forEach((r, j) => {
+        const v = X.rooms[fi]?.[j]; if (!v || v.climate || v.t == null || r.sp == null) return;
+        const thr = r.sp - NODEMAND_DIFF; if (v.t > thr) return;
+        const h = st.hist[`room-${fi}-${j}`] || []; let since = now;
+        for (let i = h.length - 1; i >= 0 && h[i].v <= thr; i--) since = h[i].t;      // begin van de huidige periode onder de drempel
+        const from = Math.max(X.in1OffSince, since);
+        if (now - from >= NODEMAND_MIN * 60e3) X.noDemand.push({ naam: r.naam, t: v.t, sp: r.sp, from });
+      }));
+    }
     // vandaag gemeten (teller nu − teller om middernacht), anders uit de 5-minutenstatistiek
     const m = st.measured;
     const today = (tot, mid) => tot != null && mid != null && tot >= mid ? tot - mid : null;
@@ -1633,6 +1653,12 @@ function mountDashboard(host, root) {
     else if (st.last && Date.now() - st.last > 45 * 60e3 && core.some(k => S(R[k])?.last_reported))
       b.push(["warn", `<b>Geen nieuwe waarden</b> van de Asgard sinds ${hhmm(st.last)}. Controleer de Asgard (wifi, stroom) en de ESPHome-integratie.`]);
     if (X.defrost) b.push(["", `<b>De buitenunit ontdooit.</b> De kringloop draait tijdelijk om: de warmtepomp haalt warmte uit het water om het ijs van de verdamper te smelten en de ventilator staat stil. De aanvoer zakt een paar minuten; daarna gaat hij gewoon verder.`]);
+    if (X.noDemand.length) {
+      const n = X.noDemand, lang = duur((Date.now() - Math.min(...n.map(x => x.from))) / 1000);
+      b.push(["warn", `<b>Geen warmtevraag, terwijl ${n.length > 1 ? `${n.length} kamers al ${lang} te koud zijn` : `${esc(n[0].naam.toLowerCase())} al ${lang} te koud is`}.</b> `
+        + n.map(x => `${esc(x.naam)} ${fmt(x.t, 1)} °C, ingesteld ${fmt(x.sp, 1)} °C`).join(" · ")
+        + `. IN1 staat sinds ${new Date(X.in1OffSince).toDateString() === new Date().toDateString() ? hhmm(X.in1OffSince) : dagTijd(X.in1OffSince)} uit, dus de warmtepomp krijgt geen vraag. Controleer de thermostaat en het Alpha-basisstation; een herstart van het basisstation (stekker eruit en weer erin) hielp eerder.`]);
+    }
     if (X.faultOn) b.push(["bad", `<b>Storing op de Ecodan: ${esc(X.fault)}.</b> Zie het bedieningspaneel of de servicehandleiding voor de betekenis van de code.`]);
     if (X.refErrOn) b.push(["bad", `<b>Koudemiddelcircuit meldt: ${esc(X.refErr)}.</b>`]);
     if (X.opmode != null && !/curve/i.test(X.opmode))
@@ -1900,11 +1926,12 @@ function mountDashboard(host, root) {
         include_start_time_state: true, minimal_response: true, no_attributes: true, significant_changes_only: false });
       const pts = (res?.[id] || []).map(h => ({ t: h.lu != null ? h.lu * 1000 : Date.parse(h.last_changed), v: parseFloat(h.s ?? h.state) }))
         .filter(p => isFinite(p.v) && isFinite(p.t));
-      const live = st[key].filter(p => !pts.length || p.t > pts[pts.length - 1].t);
-      st[key] = pts.concat(live); st.sig = ""; schedule();
+      const live = (st.hist[key] || []).filter(p => !pts.length || p.t > pts[pts.length - 1].t);
+      st.hist[key] = pts.concat(live); st.sig = ""; schedule();
     } catch (e) { console.warn("Ecodan-panel: historie van " + id + " niet beschikbaar", e); }
   }
-  render(); loadMeasured(); loadHist(R.tank, TAP_WIN, "tankHist"); loadHist(R.tapvoeler, PROBE_WIN, "probeHist");
+  render(); loadMeasured(); loadHist(R.tank, TAP_WIN, "tank"); loadHist(R.tapvoeler, PROBE_WIN, "probe");
+  R.floors.forEach((f, fi) => f.kamers.forEach((r, j) => { if (r.ent && !r.ent.startsWith("climate.")) loadHist(r.ent, 2 * NODEMAND_MIN * 60e3, `room-${fi}-${j}`); }));
   st.timers.push(setInterval(() => {
     const mid = new Date(); mid.setHours(0, 0, 0, 0);
     if (mid.getTime() !== st.midnight || st.measured.src === "statistiek") loadMeasured();   // nieuwe dag, of statistiek bijwerken
