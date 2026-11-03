@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.15.1";
+const ECODASH_VERSION = "1.15.2";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -292,6 +292,9 @@ const pipe = (d, col, g, thin = false) =>
 const nb = (x, y, n) => `<g class="nb"><circle cx="${x}" cy="${y}" r="6.2"/><text x="${x}" y="${y + 2.6}">${n}</text></g>`;
 const pwr = (d, g) => `<path class="pwr" d="${d}"/><path class="fl f-${g} thin" d="${d}"/>`;
 
+// achtergrond per verdieping; vóór de leidingen getekend, zodat de stijgleidingen er ongedimd overheen lopen
+const floorBands = floors => floors.map((f, fi) => `<rect class="band" x="800" y="${[70, 300, 530][fi]}" width="378" height="210" rx="6"/>`).join("");
+
 function floorsSvg(floors) {
   const tops = [70, 300, 530];
   // lussen: heen bovenlangs van rood naar de mengkleur bij de bocht, terug onderlangs van de mengkleur naar blauw
@@ -302,7 +305,6 @@ function floorsSvg(floors) {
       <stop offset="0" style="stop-color:var(--loopmid)"/><stop offset="1" style="stop-color:var(--ret)"/></linearGradient></defs>`;
   floors.forEach((f, fi) => {
     const T = tops[fi];
-    s += `<rect class="band" x="800" y="${T}" width="378" height="210" rx="6"/>`;
     s += `<text class="t b fl-name" x="852" y="${T + 22}">${esc(f.naam)}</text>`;
     const hop = (T + 160) <= 580 ? `H842 a8,8 0 0 0 -16,0 H812` : `H812`;
     s += `<g class="ff" data-ff="${fi}">${pipe(`M834,${T + 50} H860`, "hot", "heat")}${pipe(`M860,${T + 160} ${hop}`, "ret", "heat")}</g>`;
@@ -406,6 +408,7 @@ function schemaSvg(floors, curve) {
   <rect class="zone" x="16" y="416" width="290" height="388" rx="8"/>
   <rect class="zone" x="320" y="16" width="460" height="788" rx="8"/>
   <rect class="zone" x="794" y="16" width="390" height="788" rx="8"/>
+  ${floorBands(floors)}
   <text class="zlabel" x="32" y="42">BUITEN · TUIN</text>
   <text class="zlabel" x="336" y="42">TECHNISCHE RUIMTE</text>
   <text class="zlabel" x="808" y="42">WONING</text>
@@ -440,6 +443,13 @@ function schemaSvg(floors, curve) {
   ${pipe("M450,397 V240 H642 a8,8 0 0 1 16,0 H727 a8,8 0 0 1 16,0 H804 a8,8 0 0 1 16,0 H834", "hot", "heat")}
   ${pipe("M465,412 H516", "hot", "dhw")}
   ${pipe("M516,470 H502 V708 H620 V750", "ret", "dhw")}
+  <!-- stijgleidingen per stuk, zodat een verdieping met alle kranen dicht stil valt (data-ff: verdiepingen erachter) -->
+  <g class="ff" data-ff="0">${pipe("M834,240 V120", "hot", "heat")}</g>
+  <g class="ff" data-ff="1 2">${pipe("M834,240 V350", "hot", "heat")}</g>
+  <g class="ff" data-ff="2">${pipe("M834,350 V580", "hot", "heat")}</g>
+  <g class="ff" data-ff="0">${pipe("M812,230 V330", "ret", "heat")}</g>
+  <g class="ff" data-ff="2">${pipe("M812,690 V460", "ret", "heat")}</g>
+  <g class="ff" data-ff="1 2">${pipe("M812,460 V330", "ret", "heat")}</g>
   ${pipe("M812,330 H750 V750 H620", "ret", "heat")}
   ${pipe("M620,750 H425 V720 H412", "ret", "prim")}
   <circle class="fill-ink" cx="620" cy="750" r="3"/>
@@ -715,18 +725,14 @@ function schemaSvg(floors, curve) {
   <g id="floors">${floorsSvg(floors)}</g>
   <!-- tappunten: alleen als de panel-indeling de standaardindeling is (begane grond onderaan, 1e in het midden) -->
   <g class="comp" data-c="taps" tabindex="0" role="button" aria-label="Tappunten warm water">
-    ${pipe("M788,503 H804 a8,8 0 0 1 16,0 H826 a8,8 0 0 1 16,0 H1132", "dhw", "tap")}
+    ${pipe("M788,503 H804 a8,8 0 0 1 16,0 H826 a8,8 0 0 1 16,0 H1100", "dhw", "tap")}
     ${pipe("M788,733 H1100", "dhw", "tap")}
     <rect class="hit" x="1070" y="460" width="112" height="50"/>
     <rect class="hit" x="1070" y="690" width="112" height="50"/>
-    <path class="pipe dhw thin" d="M1080,503 V490"/>
-    <path class="shape tapfix" d="M1070,484 h20 a10,8 0 0 1 -20,0 z"/>
-    <path class="tapfix" d="M1076,478 h7 v6" fill="none" stroke-width="2" stroke-linecap="round"/>
-    <text class="t loop" x="1091" y="489">wasbak</text>
-    <path class="pipe dhw thin" d="M1132,503 V474"/>
-    <path class="shape tapfix" d="M1124,474 h16 a8,6 0 0 0 -16,0 z"/>
-    <path class="drops" d="M1127,479 v5 M1132,479 v7 M1137,479 v5" fill="none" stroke-width="1.4" stroke-linecap="round"/>
-    <text class="t loop" x="1143" y="489">douche</text>
+    <path class="pipe dhw thin" d="M1100,503 V486"/>
+    <path class="shape tapfix" d="M1086,482 h28 v-6 h-28 z"/>
+    <path class="tapfix" d="M1096,476 v-10 h10 v4" fill="none" stroke-width="2" stroke-linecap="round"/>
+    <text class="t s" x="1120" y="482">badkamer</text>
     <path class="pipe dhw thin" d="M1100,733 V716"/>
     <path class="shape tapfix" d="M1086,712 h28 v-6 h-28 z"/>
     <path class="tapfix" d="M1096,706 v-10 h10 v4" fill="none" stroke-width="2" stroke-linecap="round"/>
@@ -751,7 +757,7 @@ const C = {
   thw2: { name: "Retourvoeler THW2", where: "Retourleiding, in de cilinderunit", text: "Temperatuur van het water dat terugkomt. Het verschil met de aanvoer (ΔT) laat zien hoeveel warmte er is afgegeven. Bij vloerverwarming is 3–7 °C verschil normaal." },
   tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat (15) met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit: het vat wordt opgewarmd via platenwisselaar 16 en sanitaire pomp 18. Koud leidingwater komt via een leiding met verdeelplaat bij de bodem binnen; warm tapwater wordt via een gebogen leiding helemaal bovenin opgenomen en gaat bovenuit naar de kranen. De aanzuiging naar wisselaar 16 neemt het koudste water bij de bodem. Maximaal 70 °C. De kleur in het vat volgt de tanktemperatuur." },
   ctrl: { name: "Hoofdscherm van de bediening", where: "Voorkant cilinderunit (servicehandleiding 9-1)", text: "Nagebouwd display van de bediening, gevuld met de live waarden van de Asgard. Net als op het echte display staan alleen de iconen die nu actief zijn. Kraan met kader: tapwater wordt nu opgewarmd; huis met zon: ruimteverwarming (één zone). Ernaast: ▶ in bedrijf, II stand-by, ■ geblokkeerd; het klokje bij tapwater betekent dat een schema tapwater nu blokkeert (DHW Prohibit). Bovenaan: balkjes = de warmtepomp draait, sneeuwvlok = de buitenunit ontdooit, bliksem = de booster heater staat aan, vat met blokjes = legionellapreventie, koffer = vakantiemodus. Daaronder de vattemperatuur (THW5B). Groot staat bij regeling op de stooklijn de verschuiving van de lijn (uit Configureren), anders het aanvoerdoel van de FTC6. In stand-by staat daar het aan/uit-symbool en is het groene lampje uit. De stille stand (quiet mode) geeft de Asgard niet door; die staat hier niet bij." },
-  taps: { name: "Tappunten warm water", where: "Keuken (begane grond), wasbak en douche (1e verdieping)", text: "Tijdens het tappen draait er geen pomp. De waterleidingdruk duwt koud water onderin het vat, en dat duwt het warme water bovenuit naar de kraan. Pas als het vat daardoor genoeg afkoelt, gaat de warmtepomp het vat opwarmen; dan draaien pomp 1 en de sanitaire pomp 18. Welke kraan open staat is niet te meten; het schema laat alle drie de tappunten oplichten zodra er warm water getapt wordt." },
+  taps: { name: "Tappunten warm water", where: "Badkamer (1e verdieping: wasbak en douche) en keuken (begane grond)", text: "Tijdens het tappen draait er geen pomp. De waterleidingdruk duwt koud water onderin het vat, en dat duwt het warme water bovenuit naar de kraan. Pas als het vat daardoor genoeg afkoelt, gaat de warmtepomp het vat opwarmen; dan draaien pomp 1 en de sanitaire pomp 18. Welke kraan open staat is niet te meten, dus het schema toont één tappunt per verdieping: de badkamer (wasbak en douche samen) en de keuken. Ze lichten samen op zodra er warm water getapt wordt." },
   tapvoeler: { name: "Tapvoeler (DS18B20) op de koudwatertoevoer", where: "Koudwaterleiding naar het vat (aansluiting B), boven de inlaatcombinatie", text: "Een DS18B20 op de 1-wire-aansluiting van de Asgard, tegen de koperen leiding geplakt. Over deze leiding stroomt alleen water als er warm water uit het vat getapt wordt: het koude water voor de rest van het huis splitst er al eerder af. In rust heeft de leiding ongeveer de temperatuur van de technische ruimte; bij tappen zakt hij binnen seconden richting leidingwatertemperatuur en kleurt het bolletje blauw. Zonder isolatie om de voeler reageert hij iets trager en zakt hij minder ver. Tijdens het opwarmen van het vat kan hij juist iets stijgen: het uitzettende water duwt een beetje warm water terug naar de overstort." },
   ds18: { name: "1-wire-voeler (DS18B20) op de warmwaterleiding", where: "Idee: op de uitgaande warmwaterleiding van het vat", text: "De Asgard heeft een 1-wire-aansluiting voor maximaal zes DS18B20-voelers. Een voeler op de warmwaterleiding warmt binnen seconden op zodra er getapt wordt. Zo is tappen direct en betrouwbaar te zien, ook zonder dat het vat al merkbaar afkoelt." },
   asgOut: { name: "Servicewaarden buitenunit en pomp (Asgard)", where: "Buitenunit en pomp 1", text: "De Asgard vraagt bij de FTC6 ook servicewaarden van de buitenunit op: persgastemperatuur (TH4), zuiggas, verdamping, ventilatortoerental, oververhitting, onderkoeling, compressorstarts en draaiuren, plus de stand en het verbruik van pomp 1. Die servicecodes werken niet op alle SUZ-buitenunits; blijft een waarde leeg, dan geeft jouw buitenunit hem niet door." },
@@ -1056,8 +1062,8 @@ svg.run-san .pump18{stroke:var(--accent);stroke-width:2.4}
 .asg.sm{font-size:9.5px}
 .sensor.asgs{stroke:var(--asg);stroke-width:1.6}
 .sensor.cold-on{fill:var(--cold)}
-.tapfix{stroke:var(--ink)} .drops{stroke:var(--muted)}
-svg.run-tap .tapfix{stroke:var(--dhw);stroke-width:2.2} svg.run-tap .drops{stroke:var(--cold)}
+.tapfix{stroke:var(--ink)}
+svg.run-tap .tapfix{stroke:var(--dhw);stroke-width:2.2}
 .tplate{fill:var(--plate);stroke:var(--plate-edge);stroke-width:1.2;filter:url(#bevel)}
 .tplate.heat{stroke:var(--hot);stroke-width:2}
 .tlcd{fill:var(--lcd);stroke:var(--lcd-edge);stroke-width:.6}
