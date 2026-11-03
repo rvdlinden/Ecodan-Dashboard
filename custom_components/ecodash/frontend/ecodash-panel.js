@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.14.0";
+const ECODASH_VERSION = "1.15.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -48,6 +48,7 @@ const ENT = {
   dhw_sp:      { d: "sensor", s: ["dhw_setpoint_value"] },
   dhw_drop:    { d: "sensor", s: ["dhw_max_temp_drop"] },
   dhw_mode:    { d: "select", s: ["dhw_mode"] },
+  dhw_prohibit:{ d: "binary_sensor", s: ["dhw_prohibit"] },
   leg_temp:    { d: "sensor", s: ["legionella_prevention_temp"] },
   // DS18B20 op de koudwatertoevoer van het vat (aansluiting B), boven de inlaatcombinatie; override "tapvoeler".
   // Eerst een voeler met "koudwatertoevoer" in de naam, anders de eerste voeler op de 1-wire-bus.
@@ -743,7 +744,7 @@ const C = {
   filter: { name: "Filter en debietmeter", where: "Retourleiding, in de cilinderunit", text: "Het filter vangt vuil uit het verwarmingswater (onderdeel van het onderhoud). De debietmeter meet hoeveel liter per minuut er stroomt; voor de SWM60 hoort dat tussen 7,2 en 17,2 L/min te liggen. De Asgard geeft het debiet door (Flow Rate); het staat in het schema onder filter · debiet." },
   thw2: { name: "Retourvoeler THW2", where: "Retourleiding, in de cilinderunit", text: "Temperatuur van het water dat terugkomt. Het verschil met de aanvoer (ΔT) laat zien hoeveel warmte er is afgegeven. Bij vloerverwarming is 3–7 °C verschil normaal." },
   tank: { name: "Tapwatervat 200 L", where: "Onderste deel van de cilinderunit", text: "Roestvrijstalen vat (15) met het drinkwater voor kranen en douche. Het verwarmingswater raakt dit drinkwater nooit: het vat wordt opgewarmd via platenwisselaar 16 en sanitaire pomp 18. Koud leidingwater komt onderin binnen, warm tapwater gaat bovenuit naar de kranen. Maximaal 70 °C. De kleur in het vat volgt de tanktemperatuur." },
-  ctrl: { name: "Hoofdscherm van de bediening", where: "Voorkant cilinderunit (servicehandleiding 9-1)", text: "Nagebouwd display van de bediening, gevuld met de live waarden van de Asgard. Kraan met kader: tapwater wordt nu opgewarmd. Huis met zon: ruimteverwarming zone 1. In het kolommetje ernaast: ▶ in bedrijf, II stand-by. Balkjes bovenaan: de warmtepomp draait; een sneeuwvlok op die plek: de buitenunit ontdooit. Bliksem: de booster heater staat aan. Vat met blokjes: legionellapreventie. Koffer: vakantiemodus. ECO: tapwater in Eco-stand. In stand-by staat op de plek van de doeltemperatuur het aan/uit-symbool en is het groene lampje uit. Daaronder de kamertemperatuur van de voeler in het bedieningspaneel (Zone 1 Room Temp) en de vattemperatuur (THW5B); groot het aanvoerdoel dat de FTC6 nu gebruikt (Zone 1 Setpoint Value)." },
+  ctrl: { name: "Hoofdscherm van de bediening", where: "Voorkant cilinderunit (servicehandleiding 9-1)", text: "Nagebouwd display van de bediening, gevuld met de live waarden van de Asgard. Net als op het echte display staan alleen de iconen die nu actief zijn. Kraan met kader: tapwater wordt nu opgewarmd; huis met zon: ruimteverwarming (één zone). Ernaast: ▶ in bedrijf, II stand-by, ■ geblokkeerd; het klokje bij tapwater betekent dat een schema tapwater nu blokkeert (DHW Prohibit). Bovenaan: balkjes = de warmtepomp draait, sneeuwvlok = de buitenunit ontdooit, bliksem = de booster heater staat aan, vat met blokjes = legionellapreventie, koffer = vakantiemodus. Daaronder de vattemperatuur (THW5B). Groot staat bij regeling op de stooklijn de verschuiving van de lijn (uit Configureren), anders het aanvoerdoel van de FTC6. In stand-by staat daar het aan/uit-symbool en is het groene lampje uit. De stille stand (quiet mode) geeft de Asgard niet door; die staat hier niet bij." },
   taps: { name: "Tappunten warm water", where: "Keuken (begane grond), wasbak en douche (1e verdieping)", text: "Tijdens het tappen draait er geen pomp. De waterleidingdruk duwt koud water onderin het vat, en dat duwt het warme water bovenuit naar de kraan. Pas als het vat daardoor genoeg afkoelt, gaat de warmtepomp het vat opwarmen; dan draaien pomp 1 en de sanitaire pomp 18. Welke kraan open staat is niet te meten; het schema laat alle drie de tappunten oplichten zodra er warm water getapt wordt." },
   tapvoeler: { name: "Tapvoeler (DS18B20) op de koudwatertoevoer", where: "Koudwaterleiding naar het vat (aansluiting B), boven de inlaatcombinatie", text: "Een DS18B20 op de 1-wire-aansluiting van de Asgard, tegen de koperen leiding geplakt. Over deze leiding stroomt alleen water als er warm water uit het vat getapt wordt: het koude water voor de rest van het huis splitst er al eerder af. In rust heeft de leiding ongeveer de temperatuur van de technische ruimte; bij tappen zakt hij binnen seconden richting leidingwatertemperatuur en kleurt het bolletje blauw. Zonder isolatie om de voeler reageert hij iets trager en zakt hij minder ver. Tijdens het opwarmen van het vat kan hij juist iets stijgen: het uitzettende water duwt een beetje warm water terug naar de overstort." },
   ds18: { name: "1-wire-voeler (DS18B20) op de warmwaterleiding", where: "Idee: op de uitgaande warmwaterleiding van het vat", text: "De Asgard heeft een 1-wire-aansluiting voor maximaal zes DS18B20-voelers. Een voeler op de warmwaterleiding warmt binnen seconden op zodra er getapt wordt. Zo is tappen direct en betrouwbaar te zien, ook zonder dat het vat al merkbaar afkoelt." },
@@ -836,6 +837,8 @@ const G = [
     { k: "dhw_sp", n: "DHW Setpoint Value", c: "tank", x: "Gewenste temperatuur van het vat, zoals ingesteld op het bedieningspaneel." },
     { k: "dhw_drop", n: "DHW Max Temp Drop", c: "thw5", x: "Hoeveel het vat onder de ingestelde waarde mag zakken voordat de warmtepomp het opnieuw opwarmt (hysterese)." },
     { k: "dhw_mode", n: "DHW Mode", c: "ctrl", x: "Normal of Eco. In Eco warmt de warmtepomp het vat rustiger op: zuiniger, maar het duurt langer." },
+    { k: "dhw_prohibit", n: "DHW Prohibit", c: "ctrl", x: "Tapwater geblokkeerd, meestal door het tijdschema op de bediening. Zolang dit aan staat, warmt de warmtepomp het vat niet op, ook niet als het te koud is. Het hoofdscherm toont dan een klokje en ■ bij tapwater.",
+      now: X => X.dhwProhibit == null ? "" : X.dhwProhibit ? "Aan: tapwater opwarmen is nu geblokkeerd." : "Uit: tapwater mag opgewarmd worden." },
     { k: "leg_temp", n: "Legionella Prevention Temp", c: "tank", x: "Temperatuur waar het vat bij de legionella-run naartoe wordt gebracht. De booster heater duwt het laatste stuk." },
     { k: "tapvoeler", n: "Tapvoeler koudwatertoevoer (DS18B20)", c: "tapvoeler", opt: 1, x: `DS18B20 aan de Asgard op de koudwaterleiding naar het vat (aansluiting B), boven de inlaatcombinatie. Daar stroomt alleen water als er warm water getapt wordt. Het schema ziet tappen zodra de voeler minstens ${fmt(PROBE_DROP, 1)} °C onder zijn hoogste waarde van de laatste ${PROBE_WIN / 60e3} minuten zakt, en stopt zodra hij weer ${fmt(PROBE_RISE, 1)} °C opwarmt.`,
       now: X => X.probe == null ? "" : X.probeDraw ? `Er wordt warm water getapt: de voeler is ${fmt(X.probeDrop, 1)} °C gezakt doordat koud leidingwater het vat in stroomt.`
@@ -985,7 +988,7 @@ h3{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:.0
 .cbrand{font-family:var(--f-body);font-size:8px;font-weight:700;letter-spacing:.06em;fill:var(--ink)}
 .lcd{stroke:#1b1f1c;fill:none} .lcd text{stroke:none} .lcd .lt{fill:#1b1f1c;stroke:none;font-family:var(--f-mono);font-weight:500}
 .lcd .lt.big{font-size:62px;font-weight:400;letter-spacing:-.04em} .lcd .lf{fill:#1b1f1c;stroke:none}
-.lcd .ic.off, .lcd .st{opacity:.08} .lcd .st.on{opacity:1}
+.lcd .ic.off, .lcd .st{opacity:0} .lcd .st.on{opacity:1}
 .lcd .cbox{stroke-opacity:.15} .lcd .cbox.on{stroke-opacity:1}
 .ckeys rect, .ckeys circle{fill:var(--plate);stroke:var(--shape-edge);stroke-width:1.2;filter:url(#cbevel)}
 .ckeys text{font-family:var(--f-body);font-size:10px;font-weight:600;text-anchor:middle;fill:var(--muted)}
@@ -1159,8 +1162,8 @@ function ctrlSvg(x, y, w) {
   <text class="cbrand" x="34" y="30">MITSUBISHI ELECTRIC</text>
   <rect x="38" y="40" width="324" height="226" rx="4" fill="url(#lcdGrad)" stroke="#111" stroke-width="2"/>
   <g class="lcd">
-    <!-- 15, 14: SD-kaart en menuslot (niet actief) -->
-    <g class="ic off"><rect x="140" y="47" width="14" height="16" rx="2" fill="none" stroke-width="1.4"/><text x="147" y="59" class="lt" font-size="6.5" text-anchor="middle">SD</text></g>
+    <!-- 15, 14: SD-kaart (zit erin) en menuslot (niet actief) -->
+    <g class="ic"><rect x="140" y="47" width="14" height="16" rx="2" fill="none" stroke-width="1.4"/><text x="147" y="59" class="lt" font-size="6.5" text-anchor="middle">SD</text></g>
     <g class="ic off"><rect x="160" y="52" width="13" height="11" rx="1.5" fill="none" stroke-width="1.4"/><path d="M162,52 v-3 a4.5,4.5 0 0 1 9,0 v3" fill="none" stroke-width="1.4"/></g>
     <text class="lt" id="c-date" x="186" y="63" font-size="16"></text>
     <text class="lt" id="c-time" x="354" y="63" font-size="16" text-anchor="end"></text>
@@ -1171,16 +1174,16 @@ function ctrlSvg(x, y, w) {
     <path class="lf" d="M58,98 h22 v-5 h4 v-4 h-12 v4 h4 v5 h-18 z M80,98 h12 a4,4 0 0 1 4,4 v8 h-6 v-6 h-10 z"/>
     <path d="M93,114 v6 M96,116 v6 M90,117 v5" stroke-width="1.6"/>
     <text class="lt" id="c-eco" x="64" y="126" font-size="8">ECO</text>
-    <!-- 9: ruimteverwarming zone 1 (kader = nu actief) -->
+    <!-- 9: ruimteverwarming (één zone; kader = nu actief) -->
     <path class="cbox" id="c-heatbox" d="M48,166 L77,142 L106,166 V196 H48 Z" fill="none" stroke-width="2.4"/>
     <circle cx="77" cy="178" r="7" fill="none" stroke-width="2.2"/>
     <path d="M77,165 v-4 M77,195 v-4 M64,178 h-4 M94,178 h-4 M68,169 l-3,-3 M86,169 l3,-3 M68,187 l-3,3 M86,187 l3,3" stroke-width="1.8"/>
-    <rect x="52" y="202" width="14" height="14" class="lf"/><text x="59" y="213" font-size="10" text-anchor="middle" fill="#e4e8e2">1</text>
-    <rect x="86" y="202" width="14" height="14" fill="none" stroke-width="1.4"/><text class="lt" x="93" y="213" font-size="10" text-anchor="middle">2</text>
 
-    <!-- 12: status tapwater (boven) en verwarming (onder): ▶ in bedrijf, II stand-by -->
-    <g id="c-dhw-run" class="st"><rect x="112" y="96" width="16" height="16" rx="2" class="lf"/><path d="M117,99 l7,5 l-7,5 z" fill="#e4e8e2"/></g>
-    <g id="c-dhw-sb" class="st"><rect x="112" y="96" width="16" height="16" rx="2" class="lf"/><path d="M116,99 v10 M124,99 v10" stroke="#e4e8e2" stroke-width="2.4"/></g>
+    <!-- 12: status tapwater (boven) en verwarming (onder): ▶ in bedrijf, II stand-by, ■ geblokkeerd; klokje = schema -->
+    <g id="c-dhw-clock" class="st"><circle cx="120" cy="88" r="7.5" fill="none" stroke-width="2"/><path d="M120,83 v5 h4" fill="none" stroke-width="1.8"/></g>
+    <g id="c-dhw-run" class="st"><rect x="112" y="104" width="16" height="16" rx="2" class="lf"/><path d="M117,107 l7,5 l-7,5 z" fill="#e4e8e2"/></g>
+    <g id="c-dhw-sb" class="st"><rect x="112" y="104" width="16" height="16" rx="2" class="lf"/><path d="M116,107 v10 M124,107 v10" stroke="#e4e8e2" stroke-width="2.4"/></g>
+    <g id="c-dhw-stop" class="st"><rect x="112" y="104" width="16" height="16" rx="2" class="lf"/><rect x="116" y="108" width="8" height="8" fill="#e4e8e2"/></g>
     <g id="c-heat-run" class="st"><rect x="112" y="170" width="16" height="16" rx="2" class="lf"/><path d="M117,173 l7,5 l-7,5 z" fill="#e4e8e2"/></g>
     <g id="c-heat-sb" class="st"><rect x="112" y="170" width="16" height="16" rx="2" class="lf"/><path d="M116,173 v10 M124,173 v10" stroke="#e4e8e2" stroke-width="2.4"/></g>
 
@@ -1194,15 +1197,13 @@ function ctrlSvg(x, y, w) {
     <g class="ic" id="c-bh"><rect x="280" y="82" width="32" height="20" rx="2" class="lf"/><path d="M299,84 l-8,9 h5 l-3,8 l9,-10 h-5 l3,-7 z" fill="#e4e8e2"/></g>
     <g class="ic off" id="c-buf"><rect x="320" y="82" width="32" height="20" rx="2" class="lf"/></g>
 
-    <!-- 13: huidige kamer- en vattemperatuur -->
-    <path d="M154,128 l9,-8 l9,8 v10 h-18 z" fill="none" stroke-width="1.6"/><path d="M163,127 v6" stroke-width="2"/>
-    <text class="lt" id="c-room" x="178" y="139" font-size="17"></text>
+    <!-- 13: vattemperatuur (bij regeling op de stooklijn toont het display geen kamertemperatuur) -->
     <path d="M258,121 h14 v15 a7,3 0 0 1 -14,0 z" class="lf"/>
     <text class="lt" id="c-tank" x="278" y="139" font-size="17"></text>
 
     <!-- 4: doeltemperatuur; bij Curve de stooklijn als symbool -->
     <path d="M156,168 l5,-8 l5,8 z M156,174 l5,8 l5,-8 z" class="lf"/>
-    <g id="c-curveic"><path d="M150,212 h6 l14,-12 h6" fill="none" stroke-width="2.4"/><path d="M150,214 h26" stroke-width="1.2"/></g>
+    <g id="c-curveic"><path d="M150,198 v16 h26" fill="none" stroke-width="1.4"/><path d="M152,200 h4 l14,10 h4" fill="none" stroke-width="2.4"/></g>
     <g id="c-bigg"><text class="lt big" id="c-big" x="300" y="222" text-anchor="end"></text>
     <text class="lt" x="304" y="186" font-size="18">°</text><text class="lt" x="314" y="220" font-size="30">C</text></g>
     <g id="c-off" display="none" fill="none" stroke="#1b1f1c" stroke-width="3.4" stroke-linecap="round">
@@ -1210,7 +1211,7 @@ function ctrlSvg(x, y, w) {
     <text class="lt" id="c-bigsub" x="190" y="234" font-size="8"></text>
 
     <!-- functietoetsen in het scherm -->
-    <rect x="44" y="240" width="72" height="22" rx="3" class="lf"/><text x="80" y="256" font-size="11" text-anchor="middle" fill="#e4e8e2">Z1⇄Z2</text>
+    <rect x="44" y="240" width="72" height="22" rx="3" class="lf"/><text x="80" y="257" font-size="14" font-weight="700" text-anchor="middle" fill="#e4e8e2">i</text>
     <rect x="122" y="240" width="74" height="22" rx="3" class="lf"/><path d="M150,251 h18" stroke="#e4e8e2" stroke-width="2.4"/>
     <rect x="202" y="240" width="74" height="22" rx="3" class="lf"/><path d="M230,251 h18 M239,242 v18" stroke="#e4e8e2" stroke-width="2.4"/>
     <rect x="282" y="240" width="74" height="22" rx="3" class="lf"/><rect x="311" y="244" width="11" height="13" fill="none" stroke="#e4e8e2" stroke-width="1.4"/><path d="M317,253 l6,-5" stroke="#e4e8e2" stroke-width="1.6"/>
@@ -1358,6 +1359,7 @@ function mountDashboard(host, root) {
     X.dT = X.aanvoer != null && X.retour != null ? X.aanvoer - X.retour : null;
     X.target = num(R.dhw_sp);
     X.whMode = txt(R.dhw_mode);
+    X.dhwProhibit = bin(R.dhw_prohibit);
     X.hyst = X.dhw_drop > 0 ? X.dhw_drop : 8;
     const om = S(R.opmode); X.opmode = ok(om) ? om.state : null;
     X.z1sp = num(R.z1_sp);
@@ -1584,26 +1586,27 @@ function mountDashboard(host, root) {
       setT("c-time", now.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" }));
       const dhwOn = X.mode === "tapwater" || X.mode === "legionella", heatOn = X.mode === "verwarming";
       cl("#c-dhwbox", dhwOn); cl("#c-heatbox", heatOn);
-      cl("#c-dhw-run", dhwOn); cl("#c-dhw-sb", !dhwOn); cl("#c-heat-run", heatOn); cl("#c-heat-sb", !heatOn);
+      const dhwBlock = !dhwOn && !!X.dhwProhibit;
+      cl("#c-dhw-run", dhwOn); cl("#c-dhw-sb", !dhwOn && !dhwBlock); cl("#c-dhw-stop", dhwBlock); cl("#c-dhw-clock", X.dhwProhibit);
+      cl("#c-heat-run", heatOn); cl("#c-heat-sb", !heatOn);
       $("#c-leg")?.classList.toggle("off", X.mode !== "legionella");
       $("#c-hp")?.classList.toggle("off", !X.compRun && !X.defrost);
       $("#c-hp-run")?.setAttribute("display", X.defrost ? "none" : "inline");
       $("#c-hp-def")?.setAttribute("display", X.defrost ? "inline" : "none");
       $("#c-bh")?.classList.toggle("off", !(X.bh1 || X.imm));
-      $("#c-eco")?.setAttribute("opacity", /eco/i.test(X.whMode || "") ? 1 : 0.08);
+      $("#c-eco")?.setAttribute("opacity", /eco/i.test(X.whMode || "") ? 1 : 0);
       $("#c-hol")?.classList.toggle("off", !bin(R.holiday));
-      // kamertemperatuur: de voeler in het bedieningspaneel (Zone 1 Room Temp), anders de woonkamer
-      const zr = num(R.z1_room), wk = R.floors.flatMap((f, fi) => f.kamers.map((k, j) => [k.naam, X.rooms[fi]?.[j]?.t])).find(([n, t]) => /woonkamer/i.test(n) && t != null);
-      setT("c-room", zr != null ? fmt(zr, 0) + "°C" : wk ? fmt(wk[1], 0) + "°C" : "–");
       setT("c-tank", X.tank == null ? "–" : fmt(X.tank, 0) + "°C");
       const curveOn = X.opmode == null || /curve/i.test(X.opmode);
-      $("#c-curveic")?.setAttribute("opacity", curveOn ? 1 : 0.08);
-      const big = X.z1sp ?? (curveOn ? X.curveTarget : null), off = X.power === false;
-      setT("c-big", big == null ? "–" : fmt(big, 0));
-      setT("c-bigsub", off ? "stand-by (uit)" : big == null ? "" : X.z1sp != null ? "doel aanvoer (FTC6)" : "doel aanvoer (stooklijn)");
+      $("#c-curveic")?.setAttribute("opacity", curveOn ? 1 : 0);
+      // op de stooklijn toont het display de verschuiving van de lijn (+0 °C), anders het aanvoerdoel
+      const off = X.power === false, sh = CURVE.shift || 0;
+      const big = curveOn ? (sh < 0 ? "−" : "+") + fmt(Math.abs(sh), 0) : X.z1sp != null ? fmt(X.z1sp, 0) : "–";
+      setT("c-big", big);
+      setT("c-bigsub", off ? "stand-by (uit)" : curveOn ? "verschuiving stooklijn" : X.z1sp != null ? "doel aanvoer" : "");
       $("#c-bigg")?.setAttribute("display", off ? "none" : "inline");
       $("#c-off")?.setAttribute("display", off ? "inline" : "none");
-      if (off) $("#c-curveic")?.setAttribute("opacity", 0.08);
+      if (off) $("#c-curveic")?.setAttribute("opacity", 0);
       cl("#c-led", X.buiten != null && !off);
     }
 

@@ -19,9 +19,12 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
   - tankvoelers THW5A (26, boven) en THW5B (27, onder), overdrukventiel tapwater (21) en
     terugslagklep (33).
 - **Hoofdscherm:** een nagebouwd *Main screen* van de bediening (servicehandleiding 9-1) met de live
-  waarden: tapwater en verwarming in bedrijf of stand-by, warmtepomp, booster heater,
-  legionellapreventie, vakantiemodus, Eco, de kamertemperatuur van het bedieningspaneel, de
-  vattemperatuur en het aanvoerdoel van de FTC6.
+  waarden, ingericht zoals het echte display bij één zone: alleen de iconen die nu actief zijn
+  (warmtepomp, ontdooien, booster heater, legionellapreventie, vakantiemodus, Eco), tapwater en
+  verwarming met ▶ in bedrijf, II stand-by of ■ geblokkeerd (klokje: een schema blokkeert tapwater),
+  de vattemperatuur, en groot de verschuiving van de stooklijn (bij regeling op de stooklijn) of
+  het aanvoerdoel. In stand-by het aan/uit-symbool. De stille stand (quiet mode) geeft de Asgard
+  niet door.
 - **Live stromen:** lopende bolletjes laten zien waar nu iets stroomt.
   - Koudemiddel (paars) zodra de compressor draait; sneller bij een hoger toerental. De
     ventilator in de buitenunit draait mee en bij de compressor staat de frequentie. In de
