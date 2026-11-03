@@ -79,7 +79,8 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
   betekent, met een knop naar de geschiedenis van de entiteit.
 - **Wat gebeurt er nu?** Een samenvatting in gewone taal: rust, verwarming of tapwater, de stand
   van het vat ten opzichte van het doel, COP per functie en gemeten tegen geschat verbruik.
-- **Meldingen in het panel:** als de regeling (*Selected operating mode*) niet op *Heat
+- **Meldingen in het panel:** als de warmtepomp in **stand-by (uit)** staat (de schakelaar *Heatpump*
+  van de Asgard; het hoofdscherm toont dan het aan/uit-symbool), als de regeling (*Selected operating mode*) niet op *Heat
   Compensation Curve* (stooklijn) staat, als de booster heater aangaat tijdens ruimteverwarming (de
   legionella-run wordt apart als info getoond), als de dompelaar aan meldt, bij een storingscode
   (*Fault code*) of een koudemiddelfout, als de Asgard onbereikbaar is of al lang geen nieuwe
