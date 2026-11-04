@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.16.0";
+const ECODASH_VERSION = "1.16.1";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -445,7 +445,7 @@ function schemaSvg(floors, curve, channels) {
   <text class="zlabel" x="808" y="42">WONING</text>
 
   <g class="comp" data-c="cyl" tabindex="0" role="button" aria-label="Cilinderunit EHST20D-VM2D">
-    <rect class="ghost" x="340" y="60" width="420" height="736" rx="14" style="stroke:var(--muted)"/>
+    <rect class="hit" x="350" y="66" width="190" height="40"/>
     <text class="t h" x="356" y="84">EHST20D-VM2D</text>
     <text class="t s" x="356" y="100">cilinderunit (binnen) · Figure 8.2</text>
   </g>
