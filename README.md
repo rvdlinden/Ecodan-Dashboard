@@ -48,8 +48,12 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
     Tijdens het tappen draait er geen pomp: de waterleidingdruk duwt het warme water naar de kraan.
   - De booster heater gloeit als hij aan staat; de kleur in het tapwatervat volgt de
     tanktemperatuur.
-  - Warmtevraag: staat ingang IN1 van de FTC6 aan (*In1 Thermostat*), dan kleurt het signaal
-    naar de FTC6 rood. Het display-icoon en de regelunit van een kamer die warmte vraagt kleuren ook rood.
+  - Warmtevraag: alle kamerthermostaten zijn bedraad naar het centrale **Möhlenhoff-basisstation**
+    onder de begane grond. Dat zet de aandrijvingen open en schakelt IN1 van de FTC6. Staat IN1 aan
+    (*In1 Thermostat*), dan kleurt de draad van het basisstation naar de FTC6 rood. Het display-icoon
+    van een kamer die warmte vraagt kleurt ook rood. Op het basisstation branden groene lampjes voor
+    IN1, aan, en per zone (badkamer, slaapkamer 1, 2, 3, 2e verdieping, begane grond). De zonelampjes
+    zijn een schatting uit gemeten tegen ingesteld; het basisstation zelf is niet uit te lezen.
   - Vloerverwarming: er lopen alleen bolletjes door lussen waarvan de kraan open staat (zie
     *Kamers*). Een open aandrijving krijgt een rode rand, een dichte lus
     wordt vaag weergegeven en een verdieping met alle kranen dicht valt helemaal stil.
@@ -301,6 +305,7 @@ De servicewaarden van de buitenunit: `discharge`, `superheat`, `subcool`, `ou_li
 | Sleutel | Uitleg |
 |---|---|
 | `verdiepingen` | Indeling van de woning (max. 3 verdiepingen, max. 4 kamers per verdieping), van boven naar beneden. Een kamer is een naam of `{naam, entity}` met een temperatuursensor of climate-entiteit; met `entity: false` zoekt het panel niets. Per verdieping beschrijft `lussen` de verdeler (zie *Verdelers en aandrijvingen*) |
+| `kanalen` | Lampjes van de zones op het Möhlenhoff-basisstation, van links naar rechts: een lijst van `{naam, kamer}`. De kamer is de thermostaat die de zone stuurt. Standaard badkamer (via slaapkamer 1), slaapkamer 1, 2, 3, 2e verdieping (slaapkamer 4) en begane grond (woonkamer) |
 | `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Standaard *In1 Thermostat* van de Asgard. Zonder die entiteit geldt: warmtevraag = een climate-entiteit met `hvac_action: heating`, of anders: de warmtepomp draait op ruimteverwarming |
 | `tapwater_debiet` | Sensor voor de actuele waterdoorstroming. Standaard `sensor.meterkast_watermeter_water_gebruik` (zie *Tapwater, tapvoeler en watermeter*) |
 | `tapvoeler` | DS18B20 op de koudwatertoevoer van het vat. Standaard een voeler die op `koudwatertoevoer` eindigt, anders `sensor.technische_ruimte_ecodan_ds18x20_sensor_0` (zie *Tapwater, tapvoeler en watermeter*) |
