@@ -50,10 +50,12 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
     tanktemperatuur.
   - Warmtevraag: alle kamerthermostaten zijn bedraad naar het centrale **Möhlenhoff-basisstation**
     onder de begane grond. Dat zet de aandrijvingen open en schakelt IN1 van de FTC6. Staat IN1 aan
-    (*In1 Thermostat*), dan kleurt de draad van het basisstation naar de FTC6 rood. Het display-icoon
-    van een kamer die warmte vraagt kleurt ook rood. Op het basisstation branden groene lampjes voor
-    IN1, aan, en per zone (badkamer, slaapkamer 1, 2, 3, 2e verdieping, begane grond). De zonelampjes
-    zijn een schatting uit gemeten tegen ingesteld; het basisstation zelf is niet uit te lezen.
+    (*In1 Thermostat*), dan kleurt de draad van het basisstation naar de FTC6 groen. Het display-icoon
+    van een kamer die warmte vraagt kleurt rood. Op het basisstation branden groene lampjes voor IN1,
+    aan, en per zone (badkamer, slaapkamer 1, 2, 3, 2e verdieping, begane grond). *Aan* volgt het
+    stopcontact waar alleen het basisstation in zit (`sensor.hobbykamer_hobbykamer_wcd_koof_vermogen`,
+    boven 0,5 W; anders een melding). De zonelampjes zijn een schatting uit gemeten tegen ingesteld,
+    net als de display-iconen; het basisstation zelf is niet uit te lezen.
   - Vloerverwarming: er lopen alleen bolletjes door lussen waarvan de kraan open staat (zie
     *Kamers*). Een open aandrijving krijgt een rode rand, een dichte lus
     wordt vaag weergegeven en een verdieping met alle kranen dicht valt helemaal stil.
@@ -305,6 +307,7 @@ De servicewaarden van de buitenunit: `discharge`, `superheat`, `subcool`, `ou_li
 | Sleutel | Uitleg |
 |---|---|
 | `verdiepingen` | Indeling van de woning (max. 3 verdiepingen, max. 4 kamers per verdieping), van boven naar beneden. Een kamer is een naam of `{naam, entity}` met een temperatuursensor of climate-entiteit; met `entity: false` zoekt het panel niets. Per verdieping beschrijft `lussen` de verdeler (zie *Verdelers en aandrijvingen*) |
+| `mohlenhoff_vermogen` | Vermogenssensor van het stopcontact waar het Möhlenhoff-basisstation in zit. Standaard `sensor.hobbykamer_hobbykamer_wcd_koof_vermogen` |
 | `kanalen` | Lampjes van de zones op het Möhlenhoff-basisstation, van links naar rechts: een lijst van `{naam, kamer}`. De kamer is de thermostaat die de zone stuurt. Standaard badkamer (via slaapkamer 1), slaapkamer 1, 2, 3, 2e verdieping (slaapkamer 4) en begane grond (woonkamer) |
 | `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Standaard *In1 Thermostat* van de Asgard. Zonder die entiteit geldt: warmtevraag = een climate-entiteit met `hvac_action: heating`, of anders: de warmtepomp draait op ruimteverwarming |
 | `tapwater_debiet` | Sensor voor de actuele waterdoorstroming. Standaard `sensor.meterkast_watermeter_water_gebruik` (zie *Tapwater, tapvoeler en watermeter*) |
