@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.15.2";
+const ECODASH_VERSION = "1.16.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -101,9 +101,18 @@ const DEFAULT_FLOORS = [
     { naam: "Slaapkamer 3", entity: "sensor.hobbykamer_thermo_hygro_temperature" }] },
   { naam: "BEGANE GROND", hoofdactuator: true, lussen: 5, kamers: [{ naam: "Woonkamer", entity: "sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur" }] },
 ];
+// Lampjes van de zones op het Möhlenhoff-basisstation, van links naar rechts: label en de kamerthermostaat die de zone stuurt.
+// Override "kanalen": [{naam, kamer}, ...].
+const DEFAULT_CHANNELS = [
+  { naam: "badkamer", kamer: "Slaapkamer 1" }, { naam: "slaapk. 1", kamer: "Slaapkamer 1" },
+  { naam: "slaapk. 2", kamer: "Slaapkamer 2" }, { naam: "slaapk. 3", kamer: "Slaapkamer 3" },
+  { naam: "2e verd.", kamer: "Slaapkamer 4" }, { naam: "beg. grond", kamer: "Woonkamer" },
+];
 // Kraan open/dicht per kamer, afgeleid uit gemeten tegen ingesteld: open vanaf ROOM_HYST onder de ingestelde waarde,
 // dicht vanaf ROOM_HYST erboven, daartussen blijft de vorige stand staan (de thermostaat schakelt met hysterese).
 const ROOM_HYST = 0.2;        // °C
+// Het Möhlenhoff-basisstation gebruikt in bedrijf ± 5 W, met open aandrijvingen ± 10 W; onder M_ON_W staat het uit.
+const M_ON_W = 2;             // W
 // Melding "geen warmtevraag": een kamer staat minstens NODEMAND_DIFF onder de ingestelde waarde en IN1 staat uit, en
 // dat allebei al NODEMAND_MIN lang. Dan komt de vraag van de thermostaat niet bij de FTC6 aan (bijv. een vastgelopen
 // Alpha-basisstation).
@@ -188,7 +197,9 @@ function resolveEntities(hass, cfg) {
   // optioneel: tapwaterdebiet en warmtevraag
   r.tap = pick(ov.tapwater_debiet) || (has("sensor.meterkast_watermeter_water_gebruik") ? "sensor.meterkast_watermeter_water_gebruik"
     : ids.find(id => id.startsWith("sensor.") && id.includes("watermeter") && /_(water_gebruik|active_water_usage)$/.test(id)) || null);
-  // warmtevraag van de regelunit van de vloerverwarming op ingang IN1 van de FTC6
+  // warmtevraag van het Möhlenhoff-basisstation van de vloerverwarming op ingang IN1 van de FTC6
+  // vermogen van het stopcontact waar alleen het Möhlenhoff-basisstation in zit (override "mohlenhoff_vermogen")
+  r.mpower = pick(ov.mohlenhoff_vermogen) || (has("sensor.hobbykamer_hobbykamer_wcd_koof_vermogen") ? "sensor.hobbykamer_hobbykamer_wcd_koof_vermogen" : null);
   r.vraag = pick(ov.warmtevraag) || find("binary_sensor", ["in1_thermostat"]);
 
   // verdiepingen en kamers; thermostaten worden gezocht op kamernaam (climate.woonkamer of naam "Woonkamer")
@@ -217,6 +228,14 @@ function resolveEntities(hass, cfg) {
   r.floors.forEach(f => f.loops.forEach(l => {
     const j = f.kamers.findIndex(k => slug(k.naam) === slug(l.via || l.naam)); l.ctl = j < 0 ? null : j;
   }));
+  // zones op het basisstation: welke kamer (verdieping, index) stuurt elk lampje
+  const ch = Array.isArray(ov.kanalen) && ov.kanalen.length ? ov.kanalen : DEFAULT_CHANNELS;
+  r.channels = ch.slice(0, 8).map(c => {
+    const o = typeof c === "object" && c ? c : { naam: c, kamer: c }, want = slug(o.kamer || o.naam || "");
+    let at = null;
+    r.floors.forEach((f, fi) => f.kamers.forEach((k, j) => { if (!at && slug(k.naam) === want) at = [fi, j]; }));
+    return { naam: String(o.naam || o.kamer || ""), at };
+  });
   return r;
 }
 
@@ -299,9 +318,9 @@ function floorsSvg(floors) {
   const tops = [70, 300, 530];
   // lussen: heen bovenlangs van rood naar de mengkleur bij de bocht, terug onderlangs van de mengkleur naar blauw
   let s = `<defs>
-    <linearGradient id="loopOut" gradientUnits="userSpaceOnUse" x1="896" y1="0" x2="1056" y2="0">
+    <linearGradient id="loopOut" gradientUnits="userSpaceOnUse" x1="896" y1="0" x2="1016" y2="0">
       <stop offset="0" style="stop-color:var(--hot)"/><stop offset="1" style="stop-color:var(--loopmid)"/></linearGradient>
-    <linearGradient id="loopBack" gradientUnits="userSpaceOnUse" x1="1056" y1="0" x2="896" y2="0">
+    <linearGradient id="loopBack" gradientUnits="userSpaceOnUse" x1="1016" y1="0" x2="896" y2="0">
       <stop offset="0" style="stop-color:var(--loopmid)"/><stop offset="1" style="stop-color:var(--ret)"/></linearGradient></defs>`;
   floors.forEach((f, fi) => {
     const T = tops[fi];
@@ -315,48 +334,60 @@ function floorsSvg(floors) {
     s += `<rect class="shape" x="860" y="${T + 38}" width="24" height="134" rx="3"/>`;
     s += `<text class="t s" x="872" y="${T + 190}" text-anchor="middle">verdeler</text>`;
     f.loops.forEach((l, i) => {
-      const y = ly(i), d = `M896,${y - 4} H1052 a4,4 0 0 1 0,8 H896`;
+      const y = ly(i), d = `M896,${y - 4} H1012 a4,4 0 0 1 0,8 H896`;
       s += `<g class="lus" data-l="${fi}-${i}">`
-        + `<path d="M896,${y - 4} H1052 a4,4 0 0 1 0,8" fill="none" stroke="url(#loopOut)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
-        + `<path d="M1052,${y + 4} H896" fill="none" stroke="url(#loopBack)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
+        + `<path d="M896,${y - 4} H1012 a4,4 0 0 1 0,8" fill="none" stroke="url(#loopOut)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
+        + `<path d="M1012,${y + 4} H896" fill="none" stroke="url(#loopBack)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
         + `<path class="fl f-heat thin" d="${d}"/></g>`;
       if (l.naam && step >= 20) s += `<text class="t loop" x="902" y="${y - 8}">${esc(l.naam.toLowerCase())}${l.via ? ` (via ${esc(l.via.toLowerCase())})` : ""}</text>`;
     });
     // lus zonder aandrijving: alleen het handwiel op de verdeler; er loopt eventueel een stuurdraad achterlangs
+    // stuurdraad van het basisstation (verzamelleiding op x1076) naar de aandrijving(en)
     const sigTo = f.main ? 847 : 890, sigEnd = f.main ? T + 44 : acts.length ? ly(acts[acts.length - 1]) - 6 : null;
-    if (sigEnd != null) s += `<path class="sig" d="M1074,${T + 44} H1064 V${T + 32} H${sigTo} V${sigEnd}"/>`;
+    if (sigEnd != null) s += `<path class="sig" d="M1036,${T + 32} H${sigTo} V${sigEnd}"/>`;
     f.loops.forEach((l, i) => { if (!l.act) s += `<circle class="cap" cx="890" cy="${ly(i)}" r="4.6"/>`; });
-    const own = acts.length, what = f.main ? "samen open of dicht" : own === n ? "elk een eigen kraan" : own ? `${own} met eigen kraan` : "zonder kranen";
-    s += `<text class="t s" x="976" y="${T + 192}" text-anchor="middle">${n} ${n === 1 ? "lus" : "lussen"}, ${what}</text></g>`;
+    const own = acts.length, what = f.main ? "één kraan" : own === n ? "elk een kraan" : own ? `${own} met kraan` : "zonder kranen";
+    s += `<text class="t s" x="902" y="${T + 192}">${n} ${n === 1 ? "lus" : "lussen"}, ${what}</text></g>`;
     s += `<g class="comp" data-c="act" tabindex="0" role="button" aria-label="Ventielaandrijvingen">`;
     if (f.main) s += `<rect class="shape kraan" data-k="${fi}-m" x="841" y="${T + 44}" width="12" height="12" rx="2"/>`;
     acts.forEach(i => { s += `<rect class="shape kraan" data-k="${fi}-${i}" x="884" y="${ly(i) - 6}" width="12" height="12" rx="2"/>`; });
     s += `</g>`;
     s += `<g class="comp" data-c="tstat" tabindex="0" role="button" aria-label="Thermostaten ${esc(f.naam.toLowerCase())}">`;
-    s += `<path class="sig s-vraag" d="M1172,${T + 49} H1182"/>`;
-    s += `<rect class="shape regel" data-floor="${fi}" x="1074" y="${T + 36}" width="98" height="26" rx="4"/>`;
-    s += `<text class="t s" x="1123" y="${T + 53}" text-anchor="middle">regelunit</text>`;
-    const last = T + 84 + (Math.max(1, f.kamers.length) - 1) * 30;
-    s += `<path class="sig" d="M1078,${T + 62} V${last}"/>`;
     f.kamers.forEach((r, j) => {
-      const y = T + 84 + j * 30;
-      s += `<path class="sig" d="M1078,${y} H1082"/>`;
+      const y = T + 54 + j * 30;
+      s += `<path class="sig" d="M1036,${y} H1042"/>`;
       // Möhlenhoff-display: vierkant plaatje, LCD-schermpje met de ingestelde waarde en een ronde draaiknop
-      s += `<rect class="tplate" id="room-${fi}-${j}-dot" x="1083" y="${y - 14}" width="28" height="28" rx="3"/>`;
-      s += `<rect class="tlcd" x="1085" y="${y - 11.5}" width="24" height="12.5" rx="1"/>`;
-      s += `<text class="tsp" x="1097" y="${y - 2}" text-anchor="middle">${r.sp == null ? "–" : fmt(r.sp, 1) + "°"}</text>`;
-      s += `<circle class="tknob" cx="1097" cy="${y + 7.5}" r="3.6"/>`;
+      s += `<rect class="tplate" id="room-${fi}-${j}-dot" x="1043" y="${y - 14}" width="28" height="28" rx="3"/>`;
+      s += `<rect class="tlcd" x="1045" y="${y - 11.5}" width="24" height="12.5" rx="1"/>`;
+      s += `<text class="tsp" x="1057" y="${y - 2}" text-anchor="middle">${r.sp == null ? "–" : fmt(r.sp, 1) + "°"}</text>`;
+      s += `<circle class="tknob" cx="1057" cy="${y + 7.5}" r="3.6"/>`;
       if (r.ent) {
-        s += `<text class="t s room" x="1116" y="${y - 1}">${esc(r.naam)}</text>`;
-        s += `<text class="val sm" id="room-${fi}-${j}" x="1116" y="${y + 11}"></text>`;
-      } else s += `<text class="t s room" x="1116" y="${y + 4}">${esc(r.naam)}</text>`;
+        s += `<text class="t s room" x="1076" y="${y - 1}">${esc(r.naam)}</text>`;
+        s += `<text class="val sm" id="room-${fi}-${j}" x="1076" y="${y + 11}"></text>`;
+      } else s += `<text class="t s room" x="1076" y="${y + 4}">${esc(r.naam)}</text>`;
     });
     s += `</g>`;
   });
+  // verzamelleiding: alle thermostaten en aandrijvingen zijn bedraad naar het Möhlenhoff-basisstation onderin
+  if (floors.length) s += `<path class="sig" d="M1036,${tops[0] + 32} V750"/>`;
   return s;
 }
 
-function schemaSvg(floors, curve) {
+// Möhlenhoff-basisstation: lampje IN1 (warmtevraag naar de FTC6), aan, en per zone een lampje
+function baseSvg(channels) {
+  const x0 = 834, step = 45;
+  let s = `<g class="comp" data-c="mohlenhoff" tabindex="0" role="button" aria-label="Möhlenhoff-basisstation">
+    <rect class="shape" x="812" y="750" width="362" height="50" rx="5"/>
+    <text class="mbrand" x="822" y="766">möhlenhoff</text>
+    <text class="t s" id="ml-txt" x="1164" y="765" text-anchor="end">basisstation · alle thermostaten</text>`;
+  const led = (i, id, label) => `<circle class="mled" id="${id}" cx="${x0 + i * step}" cy="779" r="4.2"/>`
+    + `<text class="mlab" x="${x0 + i * step}" y="794" text-anchor="middle">${esc(label)}</text>`;
+  s += led(0, "ml-in1", "IN1") + led(1, "ml-pwr", "aan");
+  channels.forEach((c, i) => { s += led(i + 2, `ml-ch-${i}`, c.naam); });
+  return s + `</g>`;
+}
+
+function schemaSvg(floors, curve, channels) {
   return `
 <svg class="schema" id="schema" viewBox="0 0 1200 1012" role="img" aria-label="Schema van de Ecodan-installatie met buitenunit, cilinderunit en vloerverwarming">
   <defs>
@@ -482,8 +513,8 @@ function schemaSvg(floors, curve) {
     ${nb(754, 214, 33)}
   </g>
 
-  <path class="sig s-vraag" d="M1182,579 V56 H750 V98 H740"/>
-  <text class="t s" x="1170" y="50" text-anchor="end">warmtevraag aan/uit → FTC6</text>
+  <path class="sig s-vraag" d="M1174,775 H1182 V56 H750 V98 H740"/>
+  <text class="t s" x="1170" y="50" text-anchor="end">IN1 warmtevraag aan/uit → FTC6</text>
 
   <g class="comp" data-c="outdoor" data-also="meterOut" tabindex="0" role="button" aria-label="Buitenunit SUZ-SWM60 VA">
     <rect class="shape" x="40" y="90" width="240" height="250" rx="8"/>
@@ -723,20 +754,21 @@ function schemaSvg(floors, curve) {
   ${curveSvg(curve)}
 
   <g id="floors">${floorsSvg(floors)}</g>
+  ${baseSvg(channels)}
   <!-- tappunten: alleen als de panel-indeling de standaardindeling is (begane grond onderaan, 1e in het midden) -->
   <g class="comp" data-c="taps" tabindex="0" role="button" aria-label="Tappunten warm water">
-    ${pipe("M788,503 H804 a8,8 0 0 1 16,0 H826 a8,8 0 0 1 16,0 H1100", "dhw", "tap")}
-    ${pipe("M788,733 H1100", "dhw", "tap")}
-    <rect class="hit" x="1070" y="460" width="112" height="50"/>
-    <rect class="hit" x="1070" y="690" width="112" height="50"/>
-    <path class="pipe dhw thin" d="M1100,503 V486"/>
-    <path class="shape tapfix" d="M1086,482 h28 v-6 h-28 z"/>
-    <path class="tapfix" d="M1096,476 v-10 h10 v4" fill="none" stroke-width="2" stroke-linecap="round"/>
-    <text class="t s" x="1120" y="482">badkamer</text>
-    <path class="pipe dhw thin" d="M1100,733 V716"/>
-    <path class="shape tapfix" d="M1086,712 h28 v-6 h-28 z"/>
-    <path class="tapfix" d="M1096,706 v-10 h10 v4" fill="none" stroke-width="2" stroke-linecap="round"/>
-    <text class="t s" x="1120" y="712">keuken</text>
+    ${pipe("M788,503 H804 a8,8 0 0 1 16,0 H826 a8,8 0 0 1 16,0 H1060", "dhw", "tap")}
+    ${pipe("M788,733 H1060", "dhw", "tap")}
+    <rect class="hit" x="1040" y="460" width="112" height="50"/>
+    <rect class="hit" x="1040" y="690" width="112" height="50"/>
+    <path class="pipe dhw thin" d="M1060,503 V486"/>
+    <path class="shape tapfix" d="M1046,482 h28 v-6 h-28 z"/>
+    <path class="tapfix" d="M1056,476 v-10 h10 v4" fill="none" stroke-width="2" stroke-linecap="round"/>
+    <text class="t s" x="1080" y="482">badkamer</text>
+    <path class="pipe dhw thin" d="M1060,733 V716"/>
+    <path class="shape tapfix" d="M1046,712 h28 v-6 h-28 z"/>
+    <path class="tapfix" d="M1056,706 v-10 h10 v4" fill="none" stroke-width="2" stroke-linecap="round"/>
+    <text class="t s" x="1080" y="712">keuken</text>
   </g>
 </svg>`;
 }
@@ -772,8 +804,9 @@ const C = {
   thw5: { name: "Tankvoelers THW5A (26) en THW5B (27)", where: "THW5A bovenin, THW5B onderin het vat", text: "THW5B zit onderin en is de voeler waarop de FTC6 regelt (DHW Current Temp). Zakt die onder de ingestelde waarde min de toegestane daling (DHW Max Temp Drop), dan schakelt de warmtepomp naar tapwater. THW5A zit bovenin (DHW Secondary Temp) en laat zien hoe warm het water is dat naar de kranen gaat; boven is het vat warmer dan onder. Tap je warm water, dan stroomt er onderin koud leidingwater bij en zakt THW5B snel; daaraan herkent het panel dat het water via het vat loopt. Geeft THW5A vast 25,0 °C, dan is er geen bovenste voeler aangesloten." },
   cyl: { name: "Cilinderunit EHST20D-VM2D", where: "Technische ruimte", text: "Alles-in-één binnenunit: platenwisselaar, pomp, 3-wegklep, 2 kW booster heater, expansievat, regelaar en een 200 L tapwatervat in één kast. 'VM2' = 1-fase, 2 kW booster heater. De H in EHST staat voor alleen verwarmen: deze unit kan niet koelen." },
   manifold: { name: "Vloerverwarmingsverdelers", where: "Eén per verdieping", text: "Verdelen het warme water over de lussen van een verdieping: 5 op de begane grond, 5 op de 1e en 3 op de 2e verdieping. Elke lus is een slang die door één kamer (of een deel ervan) in de dekvloer loopt en afgekoeld terugkomt." },
-  act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' die een lus open of dicht zetten, aangestuurd door de thermostaat via de regelunit. Op de begane grond en de 2e verdieping zit er één op de hoofdaanvoer van de verdeler: de thermostaat zet daar alle lussen tegelijk open of dicht. Op de 1e verdieping heeft elke slaapkamer een eigen aandrijving; die van de badkamer volgt de thermostaat van slaapkamer 1. De lus naar de overloop heeft geen aandrijving en staat altijd open. Lussen zonder aandrijving hebben alleen een handwiel (het rondje op de verdeler). De aandrijvingen zijn niet uit te lezen: het panel neemt aan dat een kraan open staat zodra de kamer 0,2 °C onder de ingestelde waarde zakt en weer dicht gaat 0,2 °C erboven. Een open kraan krijgt een rode rand en alleen door open lussen lopen bolletjes als de vloerverwarming draait." },
-  tstat: { name: "Thermostaten + regelunit", where: "Per verdieping", text: "Elke thermostaat (Möhlenhoff) opent de aandrijving(en) die op zijn kanaal van de regelunit zitten. In het display-icoon staat de ingestelde temperatuur uit Configureren, ernaast de gemeten temperatuur. Zodra er ergens één warmte vraagt, geeft de regelunit een aan/uit-signaal aan de FTC6 en gaat de warmtepomp draaien. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt, schat het panel uit gemeten tegen ingesteld: 0,2 °C eronder gaat de kraan open en kleurt het display-icoon rood, 0,2 °C erboven gaat hij weer dicht. De warmtevraag naar de FTC6 (ingang IN1) leest het panel via de Asgard ('In1 Thermostat'); staat die aan, dan kleurt het signaal naar de FTC6 rood. Zonder die entiteit leidt het panel de vraag af uit de warmtepomp." },
+  act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' die een lus open of dicht zetten, aangestuurd door de thermostaat via het Möhlenhoff-basisstation. Op de begane grond en de 2e verdieping zit er één op de hoofdaanvoer van de verdeler: de thermostaat zet daar alle lussen tegelijk open of dicht. Op de 1e verdieping heeft elke slaapkamer een eigen aandrijving; die van de badkamer volgt de thermostaat van slaapkamer 1. De lus naar de overloop heeft geen aandrijving en staat altijd open. Lussen zonder aandrijving hebben alleen een handwiel (het rondje op de verdeler). De aandrijvingen zijn niet uit te lezen: het panel neemt aan dat een kraan open staat zodra de kamer 0,2 °C onder de ingestelde waarde zakt en weer dicht gaat 0,2 °C erboven. Een open kraan krijgt een rode rand en alleen door open lussen lopen bolletjes als de vloerverwarming draait." },
+  tstat: { name: "Thermostaten (Möhlenhoff)", where: "In de kamers", text: "Elke kamer heeft een bedrade Möhlenhoff-thermostaat. Ze zijn allemaal aangesloten op het centrale Möhlenhoff-basisstation (de stippellijn naar onderen); dat zet de aandrijvingen op de verdelers open of dicht en schakelt IN1 van de FTC6. In het display-icoon staat de ingestelde temperatuur uit Configureren, ernaast de gemeten temperatuur. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt, schat het panel uit gemeten tegen ingesteld: 0,2 °C eronder gaat de kraan open en kleurt het display-icoon rood, 0,2 °C erboven gaat hij weer dicht." },
+  mohlenhoff: { name: "Möhlenhoff-basisstation", where: "Centraal, alle thermostaten komen hier samen", text: "Het basisstation waarop alle kamerthermostaten (woonkamer en slaapkamer 1 tot en met 4) en de aandrijvingen op de verdelers bedraad zijn. Vraagt een of meer thermostaten warmte, dan zet het de aandrijving(en) van die zone open en sluit het contact naar IN1 van de FTC6 (de stippellijn langs de rechterkant naar de FTC6, groen zolang IN1 aan staat): de warmtepomp gaat dan verwarmen. Lampjes van links naar rechts: IN1 (warmtevraag naar de FTC6, gelezen via de Asgard), aan, en per zone (badkamer, slaapkamer 1, 2, 3, 2e verdieping, begane grond) of die zone warmte vraagt. De zonelampjes zijn een schatting uit gemeten tegen ingesteld; het basisstation zelf is niet uit te lezen. Het lampje 'aan' volgt het stopcontact waar alleen het basisstation in zit (sensor.hobbykamer_hobbykamer_wcd_koof_vermogen): het basisstation gebruikt in bedrijf ± 5 W (± 10 W als er aandrijvingen open staan); onder 2 W gaat het lampje uit en volgt een melding. Brandt een zonelampje lang terwijl IN1 uit blijft, dan is het basisstation mogelijk vastgelopen (een herstart hielp eerder)." },
   unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een mengklep met eigen zonevoelers, een mengvat met extra zonepomp en een dompelaar. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat de Asgard ze altijd aanmaakt. Voelers zonder sensor geven een vaste 25,0 °C. Water Pump 2 Status kan tijdens ruimteverwarming 'aan' melden: dan schakelt alleen de uitgang OUT2, er hangt geen pomp aan." },
   curve: { name: "Stooklijn (compensatiecurve)", where: "Instelling in de FTC6", text: "Met de regeling op Heat Compensation Curve bepaalt de FTC6 de aanvoertemperatuur uit de buitentemperatuur (TH7): hoe kouder buiten, hoe warmer het water naar de vloeren. Tot en met het koude punt geldt de hoogste aanvoer, vanaf het warme punt de laagste, en daartussen loopt de lijn recht (via het aanpassingspunt als dat is ingesteld). De groene stip is de huidige buitentemperatuur op de lijn: de aanvoer waar de FTC6 volgens de ingestelde punten op mikt. De Asgard meldt ook het aanvoerdoel dat de FTC6 zelf berekent (Zone 1 Setpoint Value); dat staat erbij en hoort gelijk te zijn aan de lijn. De rode stip is de werkelijke aanvoer (THW1) zodra de vloerverwarming draait. De punten zelf geeft de FTC6 niet door; ze komen uit Configureren. Pas ze daar aan als je de stooklijn op het Ecodan-display verandert." },
   zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. De Asgard meldt het aanvoerdoel van die zone (Zone 1 Setpoint Value) en de kamertemperatuur zoals de FTC6 die kent (Zone 1 Room Temp, van de voeler in het bedieningspaneel in de technische ruimte). Bij regeling op de stooklijn speelt die kamertemperatuur geen rol." },
@@ -869,7 +902,7 @@ const G = [
     { k: "z1_sp", n: "Zone 1 Setpoint Value", c: "curve", x: "Het aanvoerdoel dat de FTC6 nu voor de vloerverwarming gebruikt. Bij de stooklijn volgt het uit de buitentemperatuur.",
       now: X => X.z1sp == null || X.curveTarget == null ? "" : Math.abs(X.z1sp - X.curveTarget) < 1 ? "Komt overeen met de stooklijn uit Configureren." : `Wijkt ${fmt(X.z1sp - X.curveTarget, 1)} °C af van de stooklijn uit Configureren: kijk of de punten nog kloppen met het display.` },
     { k: "z1_room", n: "Zone 1 Room Temp", c: "ctrl", x: "Kamertemperatuur volgens de FTC6: de voeler in het bedieningspaneel in de technische ruimte. Speelt bij regeling op de stooklijn geen rol." },
-    { k: "vraag", n: "In1 Thermostat (warmtevraag)", c: "tstat", x: "Ingang IN1 van de FTC6: het aan/uit-signaal van de regelunit van de vloerverwarming. Aan zodra er ergens een thermostaat warmte vraagt.",
+    { k: "vraag", n: "In1 Thermostat (warmtevraag)", c: "mohlenhoff", x: "Ingang IN1 van de FTC6: het aan/uit-signaal van het Möhlenhoff-basisstation van de vloerverwarming. Aan zodra er ergens een thermostaat warmte vraagt.",
       now: X => X.vraag ? "Aan: minstens één thermostaat vraagt warmte." : "Uit: geen warmtevraag van de vloeren." },
     { k: "p_est", n: "Estimated Output Power", c: "hex", x: "Warmte die de warmtepomp nu levert, berekend door de Asgard uit debiet × ΔT.",
       now: X => X.copNow == null ? "" : `Met het gemeten stroomverbruik is de COP nu ongeveer ${fmt(X.copNow, 1)}.` },
@@ -937,7 +970,7 @@ const STYLE = `
 :host{
   --loopmid:color-mix(in srgb,var(--hot) 50%,var(--ret));
   --bg:#eef1ef; --surface:#fafbfa; --ink:#1b2422; --muted:#5b6865; --line:#c3ccc8; --zone:#e3e8e5;
-  --asg:#2e8b57; --hot:#c9412c; --ret:#2c64c4; --refr:#7a4bbf; --dhw:#d9820f; --cold:#2a9bb5; --sig:#6c7a76;
+  --ok:#1f9d4a; --asg:#2e8b57; --hot:#c9412c; --ret:#2c64c4; --refr:#7a4bbf; --dhw:#d9820f; --cold:#2a9bb5; --sig:#6c7a76;
   --accent:#2b2f2e; --accent-soft:#dfe4e2; --off:#8a9692; --glow:rgba(0,0,0,.28); --elec:#a87a00; --warn:#b26a00; --warn-soft:#fbeed6;
   --bad:#b3261e; --bad-soft:#f9dedc; --dot:#ffffffee;
   --plate:#ffffff; --plate-edge:#9aa6a2; --lcd:#b9c4b5; --lcd-edge:#8d9a8b;
@@ -953,7 +986,7 @@ const STYLE = `
 :host(.dark){
   /* donker thema: dezelfde matte opbouw als het lichte thema, in neutrale donkere tinten; accent lichtgrijs */
   --bg:#121212; --surface:#1c1c1c; --ink:#e6e6e6; --muted:#9e9e9e; --line:#333333; --zone:#242424;
-  --asg:#6fcf97; --hot:#ee6a52; --ret:#5d93ee; --refr:#a985e6; --dhw:#f0a33d; --cold:#4cc0d8; --sig:#8a8a8a;
+  --ok:#3fd36a; --asg:#6fcf97; --hot:#ee6a52; --ret:#5d93ee; --refr:#a985e6; --dhw:#f0a33d; --cold:#4cc0d8; --sig:#8a8a8a;
   --accent:#e0e0e0; --accent-soft:#2f2f2f; --off:#6e6e6e; --elec:#e2b84a; --warn:#f0b04a; --warn-soft:#2e2615;
   --bad:#ff8a80; --bad-soft:#331b19; --dot:#ffffffd9; --glow:rgba(255,255,255,.22);
   --plate:#2c2c2c; --plate-edge:#8a8a8a; --lcd:#aebaa9; --lcd-edge:#6f7b6c;
@@ -1048,7 +1081,7 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .fl-name{font-family:var(--f-display);letter-spacing:.06em}
 .val{font-family:var(--f-mono);font-size:11px;font-weight:500;fill:var(--accent);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
 .val.sm{font-size:10px}
-.val.off{fill:var(--off)} .val.hotv{fill:var(--hot)} .val.warnv{fill:var(--warn)}
+.val.off{fill:var(--off)} .val.hotv{fill:var(--hot)} .val.warnv{fill:var(--warn)} .val.okv{fill:var(--ok)}
 .sensor{fill:url(#sphere);stroke:rgba(0,0,0,.35);stroke-width:1;filter:url(#raise)}
 .tankshade{fill:url(#cylShade);pointer-events:none}
 .fill-ink{fill:var(--ink)} .fill-muted{fill:var(--muted)}
@@ -1070,7 +1103,9 @@ svg.run-tap .tapfix{stroke:var(--dhw);stroke-width:2.2}
 .tknob{fill:var(--plate);stroke:var(--plate-edge);stroke-width:1.1}
 .t.room{font-size:10px}
 .tsp{fill:#1e2a20;font-family:var(--f-body);font-size:8.2px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;pointer-events:none}
-.regel.heat{stroke:var(--hot);stroke-width:2.2}
+.mbrand{font-family:var(--f-body);font-size:15px;font-weight:800;letter-spacing:-.02em;fill:#e2231a}
+.mled{fill:var(--off);opacity:.45;stroke:none} .mled.on{fill:#3fd36a;opacity:1;filter:drop-shadow(0 0 3px #3fd36a)}
+.mlab{font-family:var(--f-body);font-size:7.5px;fill:var(--muted)}
 #tankfill{fill:url(#tankGrad);opacity:.12;transition:opacity .6s}
 /* stroom-overlay: bolletjes die in de tekenrichting van het pad lopen */
 .fl{fill:none;stroke:var(--dot);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:0.1 14;display:none;
@@ -1084,7 +1119,7 @@ svg.defrost .f-refr{animation-direction:reverse}
 svg.run-prim .f-prim, svg.run-heat .f-heat, svg.run-dhw .f-dhw, svg.run-san .f-san, svg.run-tap .f-tap{display:inline}
 svg.run-eout .f-eout{display:inline;--sp:var(--sp-eout)} svg.run-ein .f-ein{display:inline;--sp:var(--sp-ein)}
 svg.mode-heat .b-dhw, svg.mode-heat .b-san, svg.mode-dhw .b-heat{opacity:.3}
-svg.run-vraag .s-vraag{stroke:var(--hot);animation:sig 1s linear infinite} @keyframes sig{to{stroke-dashoffset:-18}}
+svg.run-vraag .s-vraag{stroke:var(--ok);animation:sig 1s linear infinite} @keyframes sig{to{stroke-dashoffset:-18}}
 .fan{transform-box:fill-box;transform-origin:center}
 svg.run-fan .fan{animation:spin var(--sp-fan,1.4s) linear infinite} @keyframes spin{to{transform:rotate(360deg)}}
 svg.run-refr .compbody{stroke:var(--refr);stroke-width:2.6}
@@ -1243,7 +1278,7 @@ function ctrlSvg(x, y, w) {
 </svg>`;
 }
 
-const TEMPLATE = (floors, curve) => `
+const TEMPLATE = (floors, curve, channels) => `
 <div id="root">
   <div class="bar">
     <span id="menu"></span><h1 id="title">Ecodan</h1><span class="chip rust" id="mode">–</span>
@@ -1254,7 +1289,7 @@ const TEMPLATE = (floors, curve) => `
     <div class="banners" id="banners"></div>
     <section class="kpis" id="kpis" aria-label="Kerncijfers"></section>
     <div class="board" id="board">
-      <div class="viewport" id="vp">${schemaSvg(floors, curve)}
+      <div class="viewport" id="vp">${schemaSvg(floors, curve, channels)}
       </div>
       <div class="zoombar">
         <button class="zb" id="z-in" aria-label="Inzoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
@@ -1302,7 +1337,7 @@ function mountDashboard(host, root) {
                             host._panel?.config || {});
   const CURVE = curvePoints(cfg.stooklijn);
   let R = resolveEntities(host._hass, cfg);
-  root.innerHTML = `<style>${STYLE}</style>${TEMPLATE(R.floors, CURVE)}`;
+  root.innerHTML = `<style>${STYLE}</style>${TEMPLATE(R.floors, CURVE, R.channels)}`;
   if (host._panel?.title) $("#title").textContent = host._panel.title;
   host._menu = document.createElement("ha-menu-button");
   host._menu.hass = host._hass; host._menu.narrow = host._narrow;
@@ -1376,6 +1411,8 @@ function mountDashboard(host, root) {
     const om = S(R.opmode); X.opmode = ok(om) ? om.state : null;
     X.z1sp = num(R.z1_sp);
     X.pOut = watt(R.p_out); X.pIn = watt(R.p_in);
+    // Möhlenhoff-basisstation: aan als het stopcontact meer meet dan een uitgeschakeld basisstation
+    X.mW = watt(R.mpower); X.mOn = R.mpower ? (X.mW == null ? false : X.mW > M_ON_W) : null;
     X.eOutTot = kwh(R.e_out); X.eInTot = kwh(R.e_in);
     X.tapFlow = num(R.tap);
     // afkoeling van het vat in het laatste venster, uit de bijgehouden THW5B-historie
@@ -1494,7 +1531,7 @@ function mountDashboard(host, root) {
   }
 
   /* weergave */
-  const setT = (id, txt, cls = "") => { const el = $("#" + id); if (!el) return; el.textContent = txt; el.setAttribute("class", el.getAttribute("class").replace(/\s?(off|hotv|warnv)\b/g, "") + (cls ? " " + cls : "")); };
+  const setT = (id, txt, cls = "") => { const el = $("#" + id); if (!el) return; el.textContent = txt; el.setAttribute("class", el.getAttribute("class").replace(/\s?(off|hotv|warnv|okv)\b/g, "") + (cls ? " " + cls : "")); };
   const deg = v => (v == null ? "–" : fmt(v, 1) + " °C");
 
   function render() {
@@ -1544,7 +1581,7 @@ function mountDashboard(host, root) {
     setT("v-out1", line(["persgas", sv("discharge", 0, " °C")], ["zuiggas", sv("ou_suction", 1, " °C")]), X.compRun ? "" : "off");
     setT("v-out2", line(["ventilator", sv("fan", 0, " rpm")], ["starts", sv("starts")]), X.compRun ? "" : "off");
     setT("v-out3", line(["pomp 1 stand", sv("pump_speed")], ["", sv("pump_w", 0, " W")]).replace(" ·  ", " · "), X.pump1 ? "" : "off");
-    setT("v-in1", X.vraagSrc === "signaal" ? `IN1 warmtevraag: ${X.vraag ? "aan" : "uit"}` : "", X.vraag ? "hotv" : "off");
+    setT("v-in1", X.vraagSrc === "signaal" ? `IN1 warmtevraag: ${X.vraag ? "aan" : "uit"}` : "", X.vraag ? "okv" : "off");
     setT("v-defrost", X.defrost ? "ontdooien" : "", "warnv");
     setT("v-bh1", onoff(X.bh1), X.bh1 ? "hotv" : "off");
     setT("v-pump1", onoff(X.pump1), X.pump1 ? "" : "off");
@@ -1581,8 +1618,6 @@ function mountDashboard(host, root) {
       f.loops.forEach((l, i) => $$(`.lus[data-l="${fi}-${i}"]`).forEach(el => el.classList.toggle("dicht", !open[i])));
       $$(`.kraan[data-k^="${fi}-"]`).forEach(el => { const k = el.dataset.k.split("-")[1];
         el.classList.toggle("open", k === "m" ? open.some(Boolean) : !!open[+k]); });
-      const anyHeat = (X.rooms[fi] || []).some(r => r && r.heat);
-      $$(`.regel[data-floor="${fi}"]`).forEach(el => el.classList.toggle("heat", anyHeat));
       f.kamers.forEach((r, j) => {
         const v = X.rooms[fi]?.[j], dot = $(`#room-${fi}-${j}-dot`);
         if (dot) dot.classList.toggle("heat", !!v?.heat);
@@ -1590,6 +1625,12 @@ function mountDashboard(host, root) {
         if (tx) tx.textContent = v?.t == null ? "–" : fmt(v.t, 1) + " °C" + (isFinite(v.sp) ? ` → ${fmt(v.sp, 1)}` : "");
       });
     });
+
+    // Möhlenhoff-basisstation: IN1, aan, en per zone de (afgeleide) stand van de thermostaat
+    $("#ml-in1")?.classList.toggle("on", !!X.vraag);
+    $("#ml-pwr")?.classList.toggle("on", X.mOn !== false);
+    setT("ml-txt", "basisstation · alle thermostaten" + (X.mW != null ? ` · ${fmt(X.mW, 1)} W` : ""));
+    R.channels.forEach((c, i) => $(`#ml-ch-${i}`)?.classList.toggle("on", X.mOn !== false && !!(c.at && X.rooms[c.at[0]]?.[c.at[1]]?.heat)));
 
     // hoofdscherm bediening
     {
@@ -1679,6 +1720,7 @@ function mountDashboard(host, root) {
       b.push(["warn", `<b>Geen nieuwe waarden</b> van de Asgard sinds ${hhmm(st.last)}. Controleer de Asgard (wifi, stroom) en de ESPHome-integratie.`]);
     if (X.power === false) b.push(["bad", `<b>De warmtepomp staat in stand-by (uit).</b> Er wordt niet verwarmd en geen tapwater gemaakt, ook niet als de thermostaten warmte vragen. Zet hem aan met de aan/uit-knop op de bediening of met de schakelaar <i>Heatpump</i> van de Asgard. Gebeurt dit na een stroomonderbreking, zet dan automatisch herstarten na stroomuitval aan op de bediening.`]);
     if (X.defrost) b.push(["", `<b>De buitenunit ontdooit.</b> De kringloop draait tijdelijk om: de warmtepomp haalt warmte uit het water om het ijs van de verdamper te smelten en de ventilator staat stil. De aanvoer zakt een paar minuten; daarna gaat hij gewoon verder.`]);
+    if (X.mOn === false) b.push(["bad", `<b>Het Möhlenhoff-basisstation heeft geen stroom</b> (stopcontact ${X.mW == null ? "niet bereikbaar" : fmt(X.mW, 1) + " W"}). Dan worden de aandrijvingen niet geopend en krijgt de FTC6 geen warmtevraag via IN1.`]);
     if (X.noDemand.length) {
       const n = X.noDemand, lang = duur((Date.now() - Math.min(...n.map(x => x.from))) / 1000);
       b.push(["warn", `<b>Geen warmtevraag, terwijl ${n.length > 1 ? `${n.length} kamers al ${lang} te koud zijn` : `${esc(n[0].naam.toLowerCase())} al ${lang} te koud is`}.</b> `
@@ -1929,14 +1971,14 @@ function mountDashboard(host, root) {
 
   /* bijwerken: alleen als een relevante entiteit verandert, hooguit één keer per frame */
   let raf = 0;
-  const watched = () => [...Object.keys(ENT), "opmode", "p_out", "p_in", "e_out", "e_in", "tap", "vraag"].map(k => R[k])
+  const watched = () => [...Object.keys(ENT), "opmode", "p_out", "p_in", "e_out", "e_in", "tap", "vraag", "mpower"].map(k => R[k])
     .concat(R.floors.flatMap(f => f.kamers.map(r => r.ent))).filter(Boolean);
   let watchIds = watched(), nStates = Object.keys(host._hass.states).length;
   const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; update(); }); };
   function update() {
     const S0 = host._hass.states, n = Object.keys(S0).length;
     if (n !== nStates) {           // nieuwe of verwijderde entiteiten: opnieuw zoeken (schema-indeling blijft)
-      nStates = n; const floors = R.floors; R = resolveEntities(host._hass, cfg); R.floors = floors; watchIds = watched();
+      nStates = n; const floors = R.floors, channels = R.channels; R = resolveEntities(host._hass, cfg); R.floors = floors; R.channels = channels; watchIds = watched();
     }
     applyTheme();
     const sig = watchIds.map(id => { const s = S0[id]; return s ? s.state + "|" + (s.attributes.temperature ?? "") + (s.attributes.hvac_action ?? "") + (s.attributes.current_temperature ?? "") : "-"; }).join(",");
