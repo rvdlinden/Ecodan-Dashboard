@@ -54,7 +54,7 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
     van een kamer die warmte vraagt kleurt rood. Op het basisstation branden groene lampjes voor IN1,
     aan, en per zone (badkamer, slaapkamer 1, 2, 3, 2e verdieping, begane grond). *Aan* volgt het
     stopcontact waar alleen het basisstation in zit (`sensor.hobbykamer_hobbykamer_wcd_koof_vermogen`,
-    boven 0,5 W; anders een melding). De zonelampjes zijn een schatting uit gemeten tegen ingesteld,
+    boven 2 W; in bedrijf ± 5 W, met open aandrijvingen ± 10 W; anders een melding). De zonelampjes zijn een schatting uit gemeten tegen ingesteld,
     net als de display-iconen; het basisstation zelf is niet uit te lezen.
   - Vloerverwarming: er lopen alleen bolletjes door lussen waarvan de kraan open staat (zie
     *Kamers*). Een open aandrijving krijgt een rode rand, een dichte lus
