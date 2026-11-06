@@ -311,6 +311,8 @@ De servicewaarden van de buitenunit: `discharge`, `superheat`, `subcool`, `ou_li
 | `kanalen` | Lampjes van de zones op het Möhlenhoff-basisstation, van links naar rechts: een lijst van `{naam, kamer}`. De kamer is de thermostaat die de zone stuurt. Standaard badkamer (via slaapkamer 1), slaapkamer 1, 2, 3, 2e verdieping (slaapkamer 4) en begane grond (woonkamer) |
 | `warmtevraag` | Een binary_sensor voor het warmtevraagcontact naar de FTC6. Standaard *In1 Thermostat* van de Asgard. Zonder die entiteit geldt: warmtevraag = een climate-entiteit met `hvac_action: heating`, of anders: de warmtepomp draait op ruimteverwarming |
 | `tapwater_debiet` | Sensor voor de actuele waterdoorstroming. Standaard `sensor.meterkast_watermeter_water_gebruik` (zie *Tapwater, tapvoeler en watermeter*) |
+| `tapwarm` | DS18B20 op de warmwateruitgang van het vat. Standaard `sensor.technische_ruimte_ecodan_ds18x20_warmwateruitgang` |
+| `heetgas` | DS18B20 op de heetgasleiding bij de cilinderunit. Standaard `sensor.technische_ruimte_ecodan_ds18x20_heetgas` |
 | `tapvoeler` | DS18B20 op de koudwatertoevoer van het vat. Standaard een voeler die op `koudwatertoevoer` eindigt, anders `sensor.technische_ruimte_ecodan_ds18x20_sensor_0` (zie *Tapwater, tapvoeler en watermeter*) |
 
 Een voorbeeld:
@@ -351,7 +353,7 @@ T-stuk naar de rest van het huis). Over die leiding stroomt alleen water als er 
 wordt; hij zakt dan binnen seconden richting leidingwatertemperatuur. Het schema ziet tappen zodra
 de voeler minstens 1 °C onder zijn hoogste waarde van de laatste 10 minuten zit, en stopt zodra hij
 weer 0,3 °C opwarmt. Het panel zoekt eerst een voeler die op `koudwatertoevoer` eindigt (bijvoorbeeld
-`sensor.technische_ruimte_ecodan_ds18x20_sensor_0_koudwatertoevoer`), anders
+`sensor.technische_ruimte_ecodan_ds18x20_koudwatertoevoer`), anders
 `sensor.technische_ruimte_ecodan_ds18x20_sensor_0`; een andere voeler koppel je met de override `tapvoeler`. Laat de rol van de voeler in de Asgard op *Unmapped*.
 Isoleer de voeler samen met de leiding, dan reageert hij sneller en zakt hij verder. In het schema
 staat hij als *tapvoeler* op de koudwaterleiding; tijdens tappen kleurt het bolletje blauw.
@@ -362,8 +364,21 @@ als er water stroomt **én** het vat onderin (THW5B) in de laatste 15 minuten mi
 afgekoeld. Korte tapbeurten zie je zo niet, en tot 15 minuten na een douchebeurt wordt ook een
 toiletspoeling als *via het vat* getoond.
 
-Met tapvoeler toont de watermeter alleen nog het debiet. Het groene punt op de warmwaterleiding
-(*1-wire (optie)*) is een plek voor een tweede voeler; die gebruikt het panel nog niet.
+Met tapvoeler toont de watermeter alleen nog het debiet.
+
+**Voeler op de warmwateruitgang.** Een tweede DS18B20 op de warmwaterleiding uit het vat
+(aansluiting A), standaard `sensor.technische_ruimte_ecodan_ds18x20_warmwateruitgang` (override
+`tapwarm`). Bij tappen warmt hij binnen seconden op; tappen = minstens 2 °C boven het laagste punt van
+de laatste 10 minuten en nog niet 0,3 °C afgekoeld. Hij werkt samen met de tapvoeler (een van beide is
+genoeg) of alleen. In het schema staat de temperatuur van het water naar de kranen op de
+warmwaterleiding. Met het debiet van de watermeter schat het panel de getapte warmte: debiet × (warm −
+koud) × 4,186 / 60 kW.
+
+**Voeler op de heetgasleiding.** Een derde DS18B20 op de dikke koudemiddelleiding bij de
+cilinderunit, standaard `sensor.technische_ruimte_ecodan_ds18x20_heetgas` (override `heetgas`). Omdat
+de buitenunit de persgastemperatuur niet doorgeeft, laat deze voeler zien hoe heet het gas
+binnenkomt, en hoeveel dat boven de condensatietemperatuur ligt. In het schema staat hij op de
+koudemiddelleiding net buiten de cilinderunit.
 
 ## Hoe het werkt
 
