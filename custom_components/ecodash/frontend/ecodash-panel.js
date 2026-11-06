@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.16.1";
+const ECODASH_VERSION = "1.17.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -52,7 +52,10 @@ const ENT = {
   leg_temp:    { d: "sensor", s: ["legionella_prevention_temp"] },
   // DS18B20 op de koudwatertoevoer van het vat (aansluiting B), boven de inlaatcombinatie; override "tapvoeler".
   // Eerst een voeler met "koudwatertoevoer" in de naam, anders de eerste voeler op de 1-wire-bus.
-  tapvoeler:   { d: "sensor", s: ["ds18x20_sensor_0_koudwatertoevoer", "koudwatertoevoer", "ds18x20_sensor_0"] },
+  tapvoeler:   { d: "sensor", s: ["ds18x20_koudwatertoevoer", "ds18x20_sensor_0_koudwatertoevoer", "koudwatertoevoer", "ds18x20_sensor_0"] },
+  // DS18B20 op de warmwateruitgang van het vat (aansluiting A) en op de heetgasleiding (R32) bij de cilinderunit
+  tapwarm:     { d: "sensor", s: ["ds18x20_warmwateruitgang", "warmwateruitgang"] },
+  heetgas:     { d: "sensor", s: ["ds18x20_heetgas", "heetgas"] },
   // regelaar en energie
   opstate:     { d: "sensor", s: ["operation_mode"] },
   // aan/stand-by van de hele warmtepomp; volgt de stand die de FTC6 doorgeeft
@@ -133,6 +136,9 @@ const TAP_WIN = 15 * 60e3;    // ... binnen dit venster
 const PROBE_DROP = 1.0;       // °C
 const PROBE_RISE = 0.3;       // °C
 const PROBE_WIN = 10 * 60e3;
+// Warmwateruitgang: bij tappen warmt de leiding binnen seconden op naar de vattemperatuur. Tappen = minstens WARM_RISE
+// boven het laagste punt van het venster en nog niet meer dan PROBE_RISE afgekoeld vanaf het hoogste punt.
+const WARM_RISE = 2.0;        // °C
 
 // Stooklijn zoals op het Ecodan-display: [buitentemperatuur, aanvoertemperatuur] per punt. Komt uit Configureren,
 // want de FTC6 geeft de punten niet door (wel het actuele aanvoerdoel, Zone 1 Setpoint Value).
@@ -455,7 +461,13 @@ function schemaSvg(floors, curve, channels) {
     <rect class="hit" x="276" y="150" width="100" height="600"/>
     ${pipe("M280,175 H352 V600 H372", "refr", "refr")}
     ${pipe("M372,720 H338 V198 H280", "refr", "refr", true)}
-    <text class="t s" x="286" y="166">R32</text>
+    <text class="t s" x="286" y="191">R32</text>
+  </g>
+  <g class="comp" data-c="heetgas" tabindex="0" role="button" aria-label="Voeler op de heetgasleiding">
+    <rect class="hit" x="282" y="138" width="56" height="42"/>
+    <circle class="sensor" cx="318" cy="175" r="4.5"/>
+    <text class="t s" x="286" y="148">heetgas</text>
+    <text class="val sm" id="v-heetgas" x="286" y="161"></text>
   </g>
   <g class="comp" data-c="th2" tabindex="0" role="button" aria-label="Koudemiddelvoeler TH2">
     <rect class="hit" x="340" y="706" width="30" height="58"/>
@@ -492,10 +504,10 @@ function schemaSvg(floors, curve, channels) {
   ${pipe("M650,300 V160 H788 V232 a8,8 0 0 1 0,16 V322 a8,8 0 0 1 0,16 V733", "dhw", "tap")}
   <text class="t s" x="662" y="152">warm tapwater</text>
   <text class="t s" x="662" y="188">koud leidingwater</text>
-  <g class="comp" data-c="ds18" tabindex="0" role="button" aria-label="DS18B20-voeler op de warmwaterleiding">
-    <rect class="hit" x="700" y="148" width="40" height="24"/>
-    <circle class="sensor asgs" cx="720" cy="160" r="5"/>
-    <text class="asg sm" x="742" y="174" text-anchor="end">1-wire (optie)</text>
+  <g class="comp" data-c="tapwarm" tabindex="0" role="button" aria-label="Voeler op de warmwateruitgang">
+    <rect class="hit" x="664" y="150" width="80" height="30"/>
+    <circle class="sensor" id="tapwarm-dot" cx="720" cy="160" r="5"/>
+    <text class="val sm" id="v-tapwarm" x="742" y="174" text-anchor="end"></text>
   </g>
   <g class="comp" data-c="tapvoeler" tabindex="0" role="button" aria-label="Tapvoeler op de koudwatertoevoer">
     <rect class="hit" x="664" y="252" width="80" height="34"/>
@@ -791,7 +803,8 @@ const C = {
   ctrl: { name: "Hoofdscherm van de bediening", where: "Voorkant cilinderunit (servicehandleiding 9-1)", text: "Nagebouwd display van de bediening, gevuld met de live waarden van de Asgard. Net als op het echte display staan alleen de iconen die nu actief zijn. Kraan met kader: tapwater wordt nu opgewarmd; huis met zon: ruimteverwarming (één zone). Ernaast: ▶ in bedrijf, II stand-by, ■ geblokkeerd; het klokje bij tapwater betekent dat een schema tapwater nu blokkeert (DHW Prohibit). Bovenaan: balkjes = de warmtepomp draait, sneeuwvlok = de buitenunit ontdooit, bliksem = de booster heater staat aan, vat met blokjes = legionellapreventie, koffer = vakantiemodus. Daaronder de vattemperatuur (THW5B). Groot staat bij regeling op de stooklijn de verschuiving van de lijn (uit Configureren), anders het aanvoerdoel van de FTC6. In stand-by staat daar het aan/uit-symbool en is het groene lampje uit. De stille stand (quiet mode) geeft de Asgard niet door; die staat hier niet bij." },
   taps: { name: "Tappunten warm water", where: "Badkamer (1e verdieping: wasbak en douche) en keuken (begane grond)", text: "Tijdens het tappen draait er geen pomp. De waterleidingdruk duwt koud water onderin het vat, en dat duwt het warme water bovenuit naar de kraan. Pas als het vat daardoor genoeg afkoelt, gaat de warmtepomp het vat opwarmen; dan draaien pomp 1 en de sanitaire pomp 18. Welke kraan open staat is niet te meten, dus het schema toont één tappunt per verdieping: de badkamer (wasbak en douche samen) en de keuken. Ze lichten samen op zodra er warm water getapt wordt." },
   tapvoeler: { name: "Tapvoeler (DS18B20) op de koudwatertoevoer", where: "Koudwaterleiding naar het vat (aansluiting B), boven de inlaatcombinatie", text: "Een DS18B20 op de 1-wire-aansluiting van de Asgard, tegen de koperen leiding geplakt. Over deze leiding stroomt alleen water als er warm water uit het vat getapt wordt: het koude water voor de rest van het huis splitst er al eerder af. In rust heeft de leiding ongeveer de temperatuur van de technische ruimte; bij tappen zakt hij binnen seconden richting leidingwatertemperatuur en kleurt het bolletje blauw. Zonder isolatie om de voeler reageert hij iets trager en zakt hij minder ver. Tijdens het opwarmen van het vat kan hij juist iets stijgen: het uitzettende water duwt een beetje warm water terug naar de overstort." },
-  ds18: { name: "1-wire-voeler (DS18B20) op de warmwaterleiding", where: "Idee: op de uitgaande warmwaterleiding van het vat", text: "De Asgard heeft een 1-wire-aansluiting voor maximaal zes DS18B20-voelers. Een voeler op de warmwaterleiding warmt binnen seconden op zodra er getapt wordt. Zo is tappen direct en betrouwbaar te zien, ook zonder dat het vat al merkbaar afkoelt." },
+  tapwarm: { name: "Voeler op de warmwateruitgang (DS18B20)", where: "Warmwaterleiding uit het vat (aansluiting A)", text: "Een DS18B20 op de 1-wire-aansluiting van de Asgard, op de leiding die het warme tapwater bovenuit het vat naar de kranen brengt. Bij tappen warmt hij binnen seconden op; samen met de tapvoeler op de koudwatertoevoer maakt dat de tapdetectie betrouwbaarder. Met het debiet van de watermeter schat het panel de getapte warmte: debiet × (warm − koud). In rust koelt de leiding af en meet hij niet de vattemperatuur." },
+  heetgas: { name: "Voeler op de heetgasleiding (DS18B20)", where: "Koudemiddelleiding (gas) bij de cilinderunit", text: "Een DS18B20 op de dikke koudemiddelleiding waardoor het hete gas van de buitenunit de cilinderunit in komt, naar platenwisselaar 3. Omdat deze buitenunit de persgastemperatuur (TH4) niet doorgeeft, laat deze voeler zien hoe heet het gas binnenkomt. Het verschil met de condensatietemperatuur zegt hoe ver het gas boven condensatie zit. Tijdens ontdooien draait de kringloop om en wordt deze leiding koud." },
   asgOut: { name: "Servicewaarden buitenunit en pomp (Asgard)", where: "Buitenunit en pomp 1", text: "De Asgard vraagt bij de FTC6 ook servicewaarden van de buitenunit op: persgastemperatuur (TH4), zuiggas, verdamping, ventilatortoerental, oververhitting, onderkoeling, compressorstarts en draaiuren, plus de stand en het verbruik van pomp 1. Die servicecodes werken niet op alle SUZ-buitenunits; blijft een waarde leeg, dan geeft jouw buitenunit hem niet door." },
   hex16: { name: "Platenwisselaar water-water (16)", where: "In de cilinderunit, naast het vat", text: "Het vat heeft geen spiraal. Staat de 3-wegklep (5) op tapwater, dan stroomt het verwarmingswater door de linkerhelft van deze tweede platenwisselaar en via de debietmeter (11) terug naar de warmtepomp. Door de rechterhelft pompt de sanitaire pomp (18) koud water van onderin het vat; dat gaat opgewarmd via de kalkvanger (17) en pomp 18 terug het vat in en komt vrij net onder THW5B. Het verwarmingswater en het drinkwater raken elkaar niet." },
   pump18: { name: "Sanitaire pomp (18)", where: "Tussen wisselaar 16 en het vat", text: "Pompt tijdens het opwarmen van tapwater het water van onderin het vat via de kalkvanger (17) en wisselaar 16 terug naar bovenin. Draait alleen in tapwaterstand. De FTC6 stuurt hem aan als pomp 4 (Water Pump 4 Status); start het opwarmen van het vat, dan gaan pomp 1 en pomp 4 tegelijk aan. Ontbreekt die entiteit, dan laat het schema hem meedraaien met de tapwaterstand." },
@@ -835,6 +848,9 @@ const G = [
     { k: "cond", n: "Refrigerant Condensing Temp", c: "hex", x: "Temperatuur waarbij het koudemiddel in de platenwisselaar condenseert, dus waar de warmte aan het water wordt afgegeven. Wordt berekend uit de druk in de buitenunit, maar hoort fysiek bij de platenwisselaar.",
       now: X => !X.compRun ? "Bij stilstand zakt het koudemiddel richting omgevingstemperatuur."
       : X.aanvoer != null && X.cond != null ? `${fmt(X.cond - X.aanvoer, 1)} °C boven de aanvoertemperatuur. Een paar graden is normaal; hoe kleiner, hoe zuiniger.` : "" },
+    { k: "heetgas", n: "Heetgasleiding (DS18B20)", c: "heetgas", opt: 1, x: "DS18B20 aan de Asgard op de gasleiding van het koudemiddel, vlak voor de cilinderunit: het hete gas dat platenwisselaar 3 in gaat. Een vervanging voor de persgastemperatuur (TH4), die deze buitenunit niet doorgeeft; door afkoeling in de leiding ligt hij lager dan bij de compressor.",
+      now: X => X.heetgas == null ? "" : X.defrost ? "Ontdooien: de kringloop draait om, deze leiding is nu de koude kant." : !X.compRun ? "De compressor staat stil: de leiding heeft ongeveer de temperatuur van de ruimte."
+        : X.gasOver == null ? "" : `${fmt(X.gasOver, 1)} °C boven de condensatietemperatuur. Een stabiel verschil is normaal; een veel groter verschil dan gewoonlijk kan op te weinig koudemiddel wijzen.` },
     { k: "th2", n: "Refrigerant Liquid Temp", c: "th2", x: "Voeler TH2 op de vloeistofleiding na de platenwisselaar: het gecondenseerde koudemiddel dat terug naar buiten gaat.",
       now: X => X.compRun && X.th2 != null && X.retour != null ? `${fmt(X.th2 - X.retour, 1)} °C ten opzichte van de retour.` : "" },
     { k: "discharge", svc: 1, n: "Discharge Temp", c: "asgOut", x: "Temperatuur van het hete gas direct na de compressor (persgas). Ruim boven de condensatietemperatuur; te hoog wijst op te weinig koudemiddel." },
@@ -888,6 +904,8 @@ const G = [
     { k: "tapvoeler", n: "Tapvoeler koudwatertoevoer (DS18B20)", c: "tapvoeler", opt: 1, x: `DS18B20 aan de Asgard op de koudwaterleiding naar het vat (aansluiting B), boven de inlaatcombinatie. Daar stroomt alleen water als er warm water getapt wordt. Het schema ziet tappen zodra de voeler minstens ${fmt(PROBE_DROP, 1)} °C onder zijn hoogste waarde van de laatste ${PROBE_WIN / 60e3} minuten zakt, en stopt zodra hij weer ${fmt(PROBE_RISE, 1)} °C opwarmt.`,
       now: X => X.probe == null ? "" : X.probeDraw ? `Er wordt warm water getapt: de voeler is ${fmt(X.probeDrop, 1)} °C gezakt doordat koud leidingwater het vat in stroomt.`
         : X.probeDrop >= PROBE_DROP ? "De kraan is dicht; de leiding warmt weer op naar de temperatuur van de technische ruimte." : "In rust: er stroomt geen water naar het vat." },
+    { k: "tapwarm", n: "Warmwateruitgang (DS18B20)", c: "tapwarm", opt: 1, x: "DS18B20 aan de Asgard op de warmwaterleiding uit het vat (aansluiting A). In rust koelt de leiding af naar de technische ruimte; bij tappen warmt hij binnen seconden op naar de temperatuur van het water dat naar de kranen gaat.",
+      now: X => X.tapWarm == null ? "" : X.hotDraw ? `Er wordt getapt: het water naar de kranen is ${deg(X.tapWarm)}${X.tapKw != null ? `, ongeveer ${fmt(X.tapKw, 1)} kW` : ""}.` : "In rust: de leiding koelt af, dit is niet de vattemperatuur." },
     { k: "tap", n: "Waterverbruik (watermeter)", c: "taps", x: `De watermeter in de meterkast meet al het water in huis, ook voor toilet en koude kranen. Met de tapvoeler bepaalt die voeler of er warm water getapt wordt en toont de watermeter alleen het debiet. Zonder tapvoeler toont het schema stroming door het vat als het vat onderin tegelijk minstens ${fmt(TAP_DROP, 1)} °C afkoelt binnen ${TAP_WIN / 60e3} minuten; korte tapbeurten zie je dan niet.`,
       now: X => !X.tapFlow ? "Er stroomt nu geen water." : X.hotDraw ? (X.drawSrc === "voeler" ? "Er wordt warm water getapt (volgens de tapvoeler)." : `Er wordt warm water getapt: het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld.`)
         : "Er stroomt water, maar niet via het vat: waarschijnlijk toilet of een koude kraan." },
@@ -970,7 +988,7 @@ const STYLE = `
 :host{
   --loopmid:color-mix(in srgb,var(--hot) 50%,var(--ret));
   --bg:#eef1ef; --surface:#fafbfa; --ink:#1b2422; --muted:#5b6865; --line:#c3ccc8; --zone:#e3e8e5;
-  --ok:#1f9d4a; --asg:#2e8b57; --hot:#c9412c; --ret:#2c64c4; --refr:#7a4bbf; --dhw:#d9820f; --cold:#2a9bb5; --sig:#6c7a76;
+  --ok:#1f9d4a; --hot:#c9412c; --ret:#2c64c4; --refr:#7a4bbf; --dhw:#d9820f; --cold:#2a9bb5; --sig:#6c7a76;
   --accent:#2b2f2e; --accent-soft:#dfe4e2; --off:#8a9692; --glow:rgba(0,0,0,.28); --elec:#a87a00; --warn:#b26a00; --warn-soft:#fbeed6;
   --bad:#b3261e; --bad-soft:#f9dedc; --dot:#ffffffee;
   --plate:#ffffff; --plate-edge:#9aa6a2; --lcd:#b9c4b5; --lcd-edge:#8d9a8b;
@@ -986,7 +1004,7 @@ const STYLE = `
 :host(.dark){
   /* donker thema: dezelfde matte opbouw als het lichte thema, in neutrale donkere tinten; accent lichtgrijs */
   --bg:#121212; --surface:#1c1c1c; --ink:#e6e6e6; --muted:#9e9e9e; --line:#333333; --zone:#242424;
-  --ok:#3fd36a; --asg:#6fcf97; --hot:#ee6a52; --ret:#5d93ee; --refr:#a985e6; --dhw:#f0a33d; --cold:#4cc0d8; --sig:#8a8a8a;
+  --ok:#3fd36a; --hot:#ee6a52; --ret:#5d93ee; --refr:#a985e6; --dhw:#f0a33d; --cold:#4cc0d8; --sig:#8a8a8a;
   --accent:#e0e0e0; --accent-soft:#2f2f2f; --off:#6e6e6e; --elec:#e2b84a; --warn:#f0b04a; --warn-soft:#2e2615;
   --bad:#ff8a80; --bad-soft:#331b19; --dot:#ffffffd9; --glow:rgba(255,255,255,.22);
   --plate:#2c2c2c; --plate-edge:#8a8a8a; --lcd:#aebaa9; --lcd-edge:#6f7b6c;
@@ -1091,10 +1109,7 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .nb circle{fill:var(--surface);stroke:var(--muted);stroke-width:.8;opacity:.9}
 .nb text{font-family:var(--f-mono);font-size:7.2px;fill:var(--muted);text-anchor:middle;pointer-events:none}
 svg.run-san .pump18{stroke:var(--accent);stroke-width:2.4}
-.asg{font-family:var(--f-mono);font-size:11px;font-weight:500;fill:var(--asg);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
-.asg.sm{font-size:9.5px}
-.sensor.asgs{stroke:var(--asg);stroke-width:1.6}
-.sensor.cold-on{fill:var(--cold)}
+.sensor.cold-on{fill:var(--cold)} .sensor.warm-on{fill:var(--dhw)}
 .tapfix{stroke:var(--ink)}
 svg.run-tap .tapfix{stroke:var(--dhw);stroke-width:2.2}
 .tplate{fill:var(--plate);stroke:var(--plate-edge);stroke-width:1.2;filter:url(#bevel)}
@@ -1421,14 +1436,29 @@ function mountDashboard(host, root) {
     // tapvoeler op de koudwatertoevoer: snel en zonder watermeter; anders watermeter + afkoelen van het vat
     X.probe = num(R.tapvoeler);
     const prh = track("probe", R.tapvoeler, PROBE_WIN);
+    X.tapWarm = num(R.tapwarm);
+    const wh = track("warm", R.tapwarm, PROBE_WIN);
+    if (X.tapWarm != null && wh.length) {
+      const vs = wh.map(p => p.v);
+      X.warmRise = X.tapWarm - Math.min(...vs);
+      X.warmDraw = X.warmRise >= WARM_RISE && Math.max(...vs) - X.tapWarm <= PROBE_RISE;
+    }
     if (X.probe != null && prh.length) {
       const vs = prh.map(p => p.v);
       X.probeDrop = Math.max(...vs) - X.probe;
       X.probeDraw = X.probeDrop >= PROBE_DROP && X.probe - Math.min(...vs) <= PROBE_RISE;
-      X.drawSrc = "voeler"; X.hotDraw = X.probeDraw;
+      X.drawSrc = "voeler"; X.hotDraw = X.probeDraw || !!X.warmDraw;
+    } else if (X.warmDraw != null) {
+      X.drawSrc = "voeler"; X.hotDraw = X.warmDraw;
     } else {
       X.drawSrc = "watermeter"; X.hotDraw = X.tapFlow > 0 && X.tankDrop >= TAP_DROP;
     }
+    // getapte warmte: debiet van de watermeter × (warm − koud); een schatting, de watermeter telt ook ander water mee
+    X.tapKw = X.hotDraw && X.tapFlow > 0 && X.tapWarm != null && X.probe != null && X.tapWarm > X.probe
+      ? X.tapFlow * (X.tapWarm - X.probe) * 4.186 / 60 : null;
+    // heetgas: hoe ver het gas bij binnenkomst boven de condensatietemperatuur zit
+    X.heetgas = num(R.heetgas);
+    X.gasOver = X.heetgas != null && X.cond != null ? X.heetgas - X.cond : null;
     X.curveTarget = X.buiten == null ? null : curveAt(CURVE, X.buiten);
     X.compRun = X.freq > 0 || !!X.compBin || X.pOut > P_RUN;
     X.compByMeter = X.compRun && !(X.freq > 0) && !X.compBin;         // alleen de kWh-meter ziet hem draaien
@@ -1596,6 +1626,9 @@ function mountDashboard(host, root) {
     setT("v-tap", !X.tapFlow ? "" : lpm(X.tapFlow), X.hotDraw ? "" : "off");
     setT("v-tap2", X.hotDraw ? (X.tapFlow ? "via het vat" : "warm water getapt") : X.tapFlow ? "niet via het vat" : "", X.hotDraw ? "" : "off");
     setT("v-probe", X.probe == null ? "" : deg(X.probe), X.hotDraw && X.drawSrc === "voeler" ? "" : "off");
+    setT("v-tapwarm", X.tapWarm == null ? "" : deg(X.tapWarm), X.hotDraw ? "" : "off");
+    $("#tapwarm-dot")?.classList.toggle("warm-on", !!X.hotDraw && X.tapWarm != null);
+    setT("v-heetgas", X.heetgas == null ? "" : deg(X.heetgas), X.compRun ? "" : "off");
     $("#probe-dot")?.classList.toggle("cold-on", X.hotDraw && X.drawSrc === "voeler");
     setT("v-target", X.target == null ? "" : `doel ${fmt(X.target, 0)} °C${X.whMode ? " · " + X.whMode : ""}`);
     setT("v-wifi", X.wifi == null ? "–" : fmt(X.wifi, 0) + " dBm", X.wifi != null && X.wifi < -75 ? "warnv" : "");
@@ -1765,7 +1798,12 @@ function mountDashboard(host, root) {
     }
     const kamers = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => [r.naam, X.rooms[fi]?.[j]?.t, r.sp])).filter(([, t]) => t != null);
     if (kamers.length) li.push(`<b>Kamers (gemeten / ingesteld):</b> ${kamers.map(([n, t, sp]) => `${esc(n)} ${fmt(t, 1)}${sp == null ? "" : " / " + fmt(sp, 1)} °C`).join(" · ")}.`);
-    if (X.hotDraw && X.drawSrc === "voeler") li.push(`<b>Er wordt warm water getapt.</b> De tapvoeler op de koudwatertoevoer is ${fmt(X.probeDrop, 1)} °C gezakt (nu ${deg(X.probe)}): er stroomt koud leidingwater het vat in${X.tapFlow > 0 ? `; de watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))}` : ""}.`);
+    if (X.hotDraw && X.drawSrc === "voeler") li.push(`<b>Er wordt warm water getapt.</b> `
+      + (X.probeDraw ? `De tapvoeler op de koudwatertoevoer is ${fmt(X.probeDrop, 1)} °C gezakt (nu ${deg(X.probe)}): er stroomt koud leidingwater het vat in`
+        : `De warmwateruitgang is ${fmt(X.warmRise, 1)} °C opgewarmd (nu ${deg(X.tapWarm)})`)
+      + (X.tapWarm != null && X.probeDraw ? `; het water naar de kranen is ${deg(X.tapWarm)}` : "")
+      + (X.tapFlow > 0 ? `; de watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))}` : "")
+      + (X.tapKw != null ? `, dat is ongeveer ${fmt(X.tapKw, 1)} kW aan warm water` : "") + ".");
     else if (X.hotDraw) li.push(`<b>Er wordt warm water getapt.</b> De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))} en het vat is ${fmt(X.tankDrop, 1)} °C afgekoeld: er stroomt koud leidingwater het vat in.`);
     else if (X.tapFlow > 0) li.push(`De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))}, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan, dus niet via de Ecodan.`);
     if (X.tank != null && X.target != null && X.mode !== "tapwater" && X.mode !== "legionella") {
@@ -1999,7 +2037,7 @@ function mountDashboard(host, root) {
       st.hist[key] = pts.concat(live); st.sig = ""; schedule();
     } catch (e) { console.warn("Ecodan-panel: historie van " + id + " niet beschikbaar", e); }
   }
-  render(); loadMeasured(); loadHist(R.tank, TAP_WIN, "tank"); loadHist(R.tapvoeler, PROBE_WIN, "probe");
+  render(); loadMeasured(); loadHist(R.tank, TAP_WIN, "tank"); loadHist(R.tapvoeler, PROBE_WIN, "probe"); loadHist(R.tapwarm, PROBE_WIN, "warm");
   R.floors.forEach((f, fi) => f.kamers.forEach((r, j) => { if (r.ent && !r.ent.startsWith("climate.")) loadHist(r.ent, 2 * NODEMAND_MIN * 60e3, `room-${fi}-${j}`); }));
   st.timers.push(setInterval(() => {
     const mid = new Date(); mid.setHours(0, 0, 0, 0);
