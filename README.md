@@ -69,7 +69,11 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
   temperaturen en de kWh-meters komen allemaal uit het 2D-panel. Klik je in 3D op een onderdeel, dan
   licht het op en verschijnt de uitleg in hetzelfde vak als bij 2D, met de entiteiten gemarkeerd in de
   lijst; een klik op een lege plek zet het terug. Sleep om te draaien, knijp of scroll om te zoomen; de
-  knoppen + en − zoomen, de middelste knop zet de camera terug. Het model en three.js (samen ruim 4,5 MB)
+  knoppen + en − zoomen, de middelste knop zet de camera terug. Net als in 2D lopen er blokjes door de
+  warm- en koudwaterleidingen als er getapt wordt en over de stroomkabels als een groep meer dan stand-by
+  verbruikt. De kWh-meters zijn de HomeWizard-meters uit 2D, met het verbruik van vandaag, het vermogen,
+  de wifi-streepjes en het pulslampje. 3D volgt het lichte of donkere thema van het panel. Snelheid en
+  gloed van de blokjes stel je in onder *Configureren*. Het model en three.js (samen ruim 4,5 MB)
   worden pas geladen als je de eerste keer op *3D* klikt; het panel onthoudt je keuze per apparaat.
   De losse kaart `ecodan-3d-card` (en `/config/www/ecodan3d/`) is daarvoor niet meer nodig.
 - **Kamertemperaturen:** per kamer de temperatuur van de slimme meter naast de (domme)
@@ -192,6 +196,8 @@ Via **Ecodan Dashboard → Configureren** stel je het volgende in:
 | 3-wegklep: aan = tapwater | Zet uit als het schema verwarming toont terwijl het vat wordt opgewarmd |
 | Thermostaat Woonkamer, Slaapkamer 1 t/m 4 | Ingestelde temperatuur op het Möhlenhoff-display in die kamer (standaard 20 °C) |
 | Stooklijn | Koude punt, warme punt, optioneel aanpassingspunt en verschuiving, zoals op het Ecodan-display (zie *Stooklijn*) |
+| 3D: snelheid van de stroomblokjes | Hoe snel de blokjes in de 3D-weergave lopen: 1 = standaard, 0,3 = rustig (standaard), 0 = stil |
+| 3D: gloed | Gloed van de stroomblokjes en lampjes in 3D: 0 = uit, 0,5 = subtiel, 1 = standaard, 3 = maximaal |
 | Overrides | Koppel entiteiten handmatig als de detectie iets mist |
 
 ### Stooklijn
@@ -415,13 +421,18 @@ custom_components/ecodash/
   frontend/ecodash-panel.js               het panel: entiteiten zoeken, SVG-schema en weergave
   frontend/ecodash-3d.js                  3D-weergave (gebundeld, met three.js), alleen tekenen
   frontend/ecodash-3d.glb                 het 3D-model
+  frontend/ecodash-3d-labels-licht.png    de vaste teksten van het model voor het lichte thema
 frontend3d/                               bron van de 3D-weergave
-  src/view3d.js, src/screens.js
+  src/view3d.js, src/screens.js           weergave (gebundeld met three.js naar ecodash-3d.js)
+  model/                                  generator van het model (Python)
 ```
 
 De 3D-weergave bevat geen eigen logica: `view3dState()` in het panel zet de uitkomst van `collect()`
 om naar een momentopname per sleutel van het model, en `view3d.js` tekent die. Na een wijziging in
-`frontend3d/src/` bouw je de bundel opnieuw met `cd frontend3d && npm install && npm run build`.
+`frontend3d/src/` bouw je de bundel opnieuw met `cd frontend3d && npm install && npm run build`. Het model
+genereer je opnieuw met `cd frontend3d/model && python3 build_ecodan_glb.py ../../custom_components/ecodash/frontend`
+(nodig: Python 3 met numpy en Pillow, en de lettertypes Inter en DejaVu Sans Mono); dat schrijft
+`ecodash-3d.glb` en `ecodash-3d-labels-licht.png`. De posities staan in `layout.py`, de vaste teksten in `labels.py`.
 
 Het 2D-panel is één JavaScript-module zonder build-stap: pas `ecodash-panel.js` aan en herlaad
 de integratie. Verhoog bij een release `version` in `manifest.json` en `ECODASH_VERSION` in

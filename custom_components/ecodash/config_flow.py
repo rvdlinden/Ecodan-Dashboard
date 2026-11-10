@@ -22,6 +22,8 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_3D_GLOW,
+    CONF_3D_SPEED,
     CONF_ADMIN_ONLY,
     CONF_CURVE_FLOW_COLD,
     CONF_CURVE_FLOW_WARM,
@@ -49,6 +51,8 @@ PREFIX_RE = re.compile(r"^[a-z0-9_]*$")
 OUTDOOR = NumberSelector(NumberSelectorConfig(min=-30, max=35, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"))
 FLOW = NumberSelector(NumberSelectorConfig(min=20, max=60, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"))
 SETPOINT = NumberSelector(NumberSelectorConfig(min=5, max=30, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"))
+SPEED_3D = NumberSelector(NumberSelectorConfig(min=0, max=3, step=0.05, mode=NumberSelectorMode.BOX))
+GLOW_3D = NumberSelector(NumberSelectorConfig(min=0, max=3, step=0.1, mode=NumberSelectorMode.BOX))
 SHIFT = NumberSelector(NumberSelectorConfig(min=-5, max=5, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="°C"))
 
 
@@ -77,6 +81,8 @@ def _data_schema(d: dict[str, Any]) -> dict:
         vol.Required(CONF_CURVE_MID_OUT, default=d[CONF_CURVE_MID_OUT]): OUTDOOR,
         vol.Required(CONF_CURVE_MID_FLOW, default=d[CONF_CURVE_MID_FLOW]): FLOW,
         vol.Required(CONF_CURVE_SHIFT, default=d[CONF_CURVE_SHIFT]): SHIFT,
+        vol.Required(CONF_3D_SPEED, default=d[CONF_3D_SPEED]): SPEED_3D,
+        vol.Required(CONF_3D_GLOW, default=d[CONF_3D_GLOW]): GLOW_3D,
         vol.Optional(CONF_OVERRIDES, default=d[CONF_OVERRIDES]): ObjectSelector(),
     }
 

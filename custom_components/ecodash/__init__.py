@@ -17,6 +17,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
 
 from .const import (
+    CONF_3D_GLOW,
+    CONF_3D_SPEED,
     CONF_ADMIN_ONLY,
     CONF_CURVE_FLOW_COLD,
     CONF_CURVE_FLOW_WARM,
@@ -71,6 +73,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "klep_aan_is_tapwater": bool(_opt(entry, CONF_VALVE_DHW)),
         "thema": _opt(entry, CONF_THEME),
         "overrides": _opt(entry, CONF_OVERRIDES) or {},
+        "snelheid_3d": float(_opt(entry, CONF_3D_SPEED)),
+        "gloed_3d": float(_opt(entry, CONF_3D_GLOW)),
         "stooklijn": {
             "koud": [float(_opt(entry, CONF_CURVE_OUT_COLD)), float(_opt(entry, CONF_CURVE_FLOW_COLD))],
             "warm": [float(_opt(entry, CONF_CURVE_OUT_WARM)), float(_opt(entry, CONF_CURVE_FLOW_WARM))],
