@@ -38,15 +38,32 @@ const PICK = [
 ];
 // Licht thema: achtergrond, behuizingen en tekstvlakken die in het (donkere) model donker zijn. Kleuren zoals het 2D-panel.
 const LIGHT_BG = '#e6ebe8';
-const LIGHT_OBJ = {
-  buitenunit_kast: '#d3d7da', buitenunit_lamellen: '#b4b9bd', buitenunit_voeten: '#8f959a', buitenunit_rooster: '#6b7176', buiten_ventilator: '#6f757a',
-  ftc6_regelaar: '#fbfbfa', ftc6_wifi: '#1b2422', basisstation_mohlenhoff: '#fbfbfa',
-  bedieningsscherm: '#f2f3f0', bedieningsscherm_toetsen: '#d2d5d1',
-  stooklijn_raster: '#c9d1cd', stooklijn_assen: '#7b8581', kwh_meter_buiten: '#ffffff', kwh_meter_binnen: '#ffffff',
+// Kleuren per thema [licht, donker], afgestemd op het 2D-panel: behuizingen zoals de .shape-vlakken in 2D (wit /
+// #363636), knoppen en meters zoals --plate (wit / #2c2c2c). LIFT: deze vlakken krijgen een eigen gloed in hun kleur,
+// zoals de schermen, zodat wit ook in 3D wit oogt en niet grijs door de belichting.
+const THEME = {
+  buitenunit_kast: ['#ffffff', '#363636'], buitenunit_ribben: ['#f6f8f7', '#303030'], buitenunit_lamellen: ['#e3e8e5', '#2a2a2a'],
+  buitenunit_voeten: ['#a6acb2', '#6f757a'], buitenunit_rooster: ['#1c1d1f', '#111111'], buitenunit_koker: ['#111214', '#0b0b0b'],
+  buitenunit_verdamper: ['#a9b0b6', '#6f767c'], buiten_ventilator: ['#26282b', '#55595d'],
+  bedieningsscherm: ['#ffffff', '#363636'], bedieningsscherm_toetsen: ['#f6f8f7', '#2c2c2c'],
+  ftc6_regelaar: ['#ffffff', '#363636'], ftc6_wifi: ['#1b2422', '#e6e6e6'], basisstation_mohlenhoff: ['#ffffff', '#363636'],
+  kwh_meter_buiten: ['#ffffff', '#2c2c2c'], kwh_meter_binnen: ['#ffffff', '#2c2c2c'],
+  stooklijn_raster: ['#c9d1cd', '#2c3036'], stooklijn_assen: ['#7b8581', '#6b7280'],
 };
-const DARK_OBJ = { kwh_meter_buiten: '#2c2c2c', kwh_meter_binnen: '#2c2c2c' };   // donker thema zoals de meter in 2D
-const LIGHT_TXT_BG = { '#161616': LIGHT_BG, '#3b3f46': '#d3d7da', '#2b2f36': '#fbfbfa', '#1f2125': '#fbfbfa' };
+const LIFT = new Set(['buitenunit_kast', 'buitenunit_ribben', 'buitenunit_lamellen', 'bedieningsscherm', 'bedieningsscherm_toetsen',
+  'ftc6_regelaar', 'basisstation_mohlenhoff', 'kwh_meter_buiten', 'kwh_meter_binnen']);
+const LIFT_I = 0.45;
+// tekstvlakken op die behuizingen krijgen dezelfde kleur; op de lichte achtergrond wordt witte tekst donker
+const TXT_BG = { '#161616': [LIGHT_BG, '#161616'], '#3b3f46': ['#ffffff', '#363636'], '#2b2f36': ['#ffffff', '#363636'], '#1f2125': ['#ffffff', '#363636'] };
 const LIGHT_TXT_FG = { '#ffffff': '#1b2422', '#a3a3a3': '#4b5563' };
+// Leidingkleuren in het lichte thema: dezelfde als in 2D (--hot, --ret, --refr, --dhw, --cold, --elec).
+const PIPE_LIGHT = [
+  [/^pipe_r32/, '#7a4bbf'],
+  [/^(pipe_cv_aanvoer|pipe_vloer_aanvoer|pipe_vloer_stijg_aanvoer|pipe_tank_aanvoer|pipe_expansie)/, '#c9412c'],
+  [/^(pipe_retour|pipe_vloer_retour|pipe_vloer_stijg_retour|pipe_tank_retour)/, '#2c64c4'],
+  [/^(pipe_tapcircuit_warm|pipe_warm_)/, '#d9820f'], [/^(pipe_tapcircuit_koud|pipe_koud_)/, '#2a9bb5'], [/^kabel_/, '#a87a00'],
+];
+const pipeLight = (name) => { const r = PIPE_LIGHT.find(([re]) => re.test(name)); return r ? r[1] : null; };
 export const pickOf = (name) => { const r = PICK.find(([re]) => re.test(name)); return r ? r[1] : null; };
 
 export class EcodashView3D {
@@ -187,8 +204,8 @@ export class EcodashView3D {
       if (this._last[t.object] === txt) continue;
       this._last[t.object] = txt;
       if (o.material.map) o.material.map.dispose();
-      const bg = this.o.dark ? t.bg : (LIGHT_TXT_BG[t.bg] || t.bg);
-      const fg = this.o.dark || bg === t.bg ? t.fg : (LIGHT_TXT_FG[t.fg] || t.fg);
+      const bg = TXT_BG[t.bg] ? TXT_BG[t.bg][this.o.dark ? 1 : 0] : t.bg;
+      const fg = this.o.dark || !TXT_BG[t.bg] ? t.fg : (LIGHT_TXT_FG[t.fg] || t.fg);
       o.material.map = this._textTex(o, txt, { ...t, bg, fg }); o.material.color.set('#ffffff');
       o.material.emissive = new THREE.Color('#ffffff'); o.material.emissiveMap = o.material.map; o.material.emissiveIntensity = 0.6;
       o.userData.e0 = [o.material.emissive.clone(), 0.6];
@@ -198,8 +215,16 @@ export class EcodashView3D {
     for (const c of X.colors) {
       const o = this._objs[c.object]; if (!o) continue;
       const st = this._st(c.key, c.object), glow = !!(c.glow && c.glow.includes(st));
-      let col = c.map[st];
-      if (col && !this.o.dark && !glow) col = '#' + new THREE.Color(col).lerp(new THREE.Color('#ffffff'), 0.5).getHexString();   // uit: lichter op licht
+      let col = c.map[st], op = 1;
+      if (!this.o.dark) {
+        // licht thema zoals 2D: leidingen houden hun kleur; alleen de tak die nu niet in gebruik is en een dichte lus
+        // worden doorschijnend (in rust staat alles gewoon in kleur)
+        const stand = (V.state || {}).stand, floor = /^(verdieping_|lus_)/.test(c.key);
+        const idle = floor ? stand !== 'uit' && st === 'uit' : c.key === 'stand' && st !== 'uit' && !glow;
+        if (idle) op = floor ? 0.35 : 0.3;
+        col = pipeLight(c.object) || (floor ? c.map.vloer : col);
+      }
+      this._opacity(o, op);
       if (col) o.material.color.set(col);
       o.material.emissive = new THREE.Color(glow ? col : '#000000'); o.material.emissiveIntensity = glow ? 0.3 : 0;
       o.userData.e0 = [o.material.emissive.clone(), o.material.emissiveIntensity];
@@ -217,6 +242,12 @@ export class EcodashView3D {
     this._requestFrame();
   }
 
+  _opacity(o, op) {
+    const m = o.material, tr = op < 1;
+    if (m.opacity === op && m.transparent === tr) return;
+    if (m.userData.t0 === undefined) m.userData.t0 = [m.transparent, m.depthWrite];
+    m.opacity = op; m.transparent = tr || m.userData.t0[0]; m.depthWrite = tr ? false : m.userData.t0[1]; m.needsUpdate = true;
+  }
   _paint(o, col, glow) {   // kleur + gloed, en onthoud dat als uitgangskleur voor het markeren
     o.material.color.set(col);
     o.material.emissive = new THREE.Color(glow ? glow : '#000000'); o.material.emissiveIntensity = glow ? 0.35 : 0;
@@ -292,8 +323,9 @@ export class EcodashView3D {
     const dark = this.o.dark;
     this._scene.background = new THREE.Color(dark ? (this._X.background || '#161616') : LIGHT_BG);
     for (const [name, o] of Object.entries(this._objs)) {
-      const c = dark ? DARK_OBJ[name] : LIGHT_OBJ[name];
-      if (c) o.material.color.set(c); else if (o.userData.c0 && (name in LIGHT_OBJ || name in DARK_OBJ)) o.material.color.copy(o.userData.c0);
+      const c = THEME[name] && THEME[name][dark ? 1 : 0]; if (!c) continue;
+      o.material.color.set(c);
+      if (LIFT.has(name)) { o.material.emissive = new THREE.Color(c); o.material.emissiveIntensity = LIFT_I; o.userData.e0 = [o.material.emissive.clone(), LIFT_I]; }
     }
     const lab = this._objs.labels;
     if (lab) {
@@ -317,7 +349,8 @@ export class EcodashView3D {
     if (f.gradient) {
       f._cs = f.gradient.map((c) => (dark ? new THREE.Color(c).lerp(new THREE.Color('#ffffff'), 0.25) : new THREE.Color(c).multiplyScalar(0.9)));
       if (!f.active) for (let i = 0; i < f.count; i++) f.mesh.setColorAt(i, f._cs[0]);
-    } else f.mesh.material.color.set(dark ? new THREE.Color(f.color).lerp(new THREE.Color('#ffffff'), 0.3) : new THREE.Color(f.color).multiplyScalar(0.85));
+    } else f.mesh.material.color.set(dark ? new THREE.Color(f.color).lerp(new THREE.Color('#ffffff'), 0.3)
+      : new THREE.Color(pipeLight(f.object) || f.color).lerp(new THREE.Color('#ffffff'), 0.15));
   }
   _renderLcd(clock) {
     const x = this.V && this.V.lcd; if (!this._lcd || !x) return;

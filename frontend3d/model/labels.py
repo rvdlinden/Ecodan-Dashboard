@@ -17,7 +17,10 @@ LABELS = [
     (49, 103, 7, "buitenunit", "white", FRONT_UNIT, "l"),
     (198, 97, 8, "TH7", G, FRONT_UNIT, "l"),
     (108, 267, 7, "ventilator + verdamper", "white", FRONT_UNIT, "c"),
-    (210, 281, 7, "compressor", "white", FRONT_UNIT, "c"),
+    (210, 281, 7, "compressor", "white", FRONT_UNIT + 1.0, "c"),        # voor de ribben langs
+    # typeplaatje rechtsboven, zoals op de echte unit
+    (183, 77.5, 4.2, "MITSUBISHI ELECTRIC", "plaatklein", FRONT_UNIT + 1.1, "l"),
+    (183, 85.5, 7.5, "ecodan", "plaat", FRONT_UNIT + 1.1, "l"),
     (257, 117, 7, "heetgas", G, FLOAT, "l"),
     (257, 154, 7, "R32", G, FLOAT, "l"),
     # binnenunit
