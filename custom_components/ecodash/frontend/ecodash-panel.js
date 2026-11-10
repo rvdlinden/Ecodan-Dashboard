@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.18.0";
+const ECODASH_VERSION = "1.18.1";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -118,7 +118,7 @@ const ROOM_HYST = 0.2;        // °C
 const M_ON_W = 2;             // W
 // Melding "geen warmtevraag": een kamer staat minstens NODEMAND_DIFF onder de ingestelde waarde en IN1 staat uit, en
 // dat allebei al NODEMAND_MIN lang. Dan komt de vraag van de thermostaat niet bij de FTC6 aan (bijv. een vastgelopen
-// Alpha-basisstation).
+// Möhlenhoff-basisstation).
 const NODEMAND_DIFF = 0.4;    // °C
 const NODEMAND_MIN = 30;      // minuten
 const P_IDLE = 30;            // W: daaronder is een groep in stand-by (regelaar, wifi)
@@ -212,9 +212,9 @@ function resolveEntities(hass, cfg) {
   // optioneel: tapwaterdebiet en warmtevraag
   r.tap = pick(ov.tapwater_debiet) || (has("sensor.meterkast_watermeter_water_gebruik") ? "sensor.meterkast_watermeter_water_gebruik"
     : ids.find(id => id.startsWith("sensor.") && id.includes("watermeter") && /_(water_gebruik|active_water_usage)$/.test(id)) || null);
-  // warmtevraag van het Möhlenhoff-basisstation van de vloerverwarming op ingang IN1 van de FTC6
   // vermogen van het stopcontact waar alleen het Möhlenhoff-basisstation in zit (override "mohlenhoff_vermogen")
   r.mpower = pick(ov.mohlenhoff_vermogen) || (has("sensor.hobbykamer_hobbykamer_wcd_koof_vermogen") ? "sensor.hobbykamer_hobbykamer_wcd_koof_vermogen" : null);
+  // warmtevraag van het Möhlenhoff-basisstation van de vloerverwarming op ingang IN1 van de FTC6
   r.vraag = pick(ov.warmtevraag) || find("binary_sensor", ["in1_thermostat"]);
 
   // verdiepingen en kamers; thermostaten worden gezocht op kamernaam (climate.woonkamer of naam "Woonkamer")
@@ -1815,7 +1815,7 @@ function mountDashboard(host, root) {
       const n = X.noDemand, lang = duur((Date.now() - Math.min(...n.map(x => x.from))) / 1000);
       b.push(["warn", `<b>Geen warmtevraag, terwijl ${n.length > 1 ? `${n.length} kamers al ${lang} te koud zijn` : `${esc(n[0].naam.toLowerCase())} al ${lang} te koud is`}.</b> `
         + n.map(x => `${esc(x.naam)} ${fmt(x.t, 1)} °C, ingesteld ${fmt(x.sp, 1)} °C`).join(" · ")
-        + `. IN1 staat sinds ${new Date(X.in1OffSince).toDateString() === new Date().toDateString() ? hhmm(X.in1OffSince) : dagTijd(X.in1OffSince)} uit, dus de warmtepomp krijgt geen vraag. Controleer de thermostaat en het Alpha-basisstation; een herstart van het basisstation (stekker eruit en weer erin) hielp eerder.`]);
+        + `. IN1 staat sinds ${new Date(X.in1OffSince).toDateString() === new Date().toDateString() ? hhmm(X.in1OffSince) : dagTijd(X.in1OffSince)} uit, dus de warmtepomp krijgt geen vraag. Controleer de thermostaat en het Möhlenhoff-basisstation; een herstart van het basisstation (stekker eruit en weer erin) hielp eerder.`]);
     }
     if (X.faultOn) b.push(["bad", `<b>Storing op de Ecodan: ${esc(X.fault)}.</b> Zie het bedieningspaneel of de servicehandleiding voor de betekenis van de code.`]);
     if (X.refErrOn) b.push(["bad", `<b>Koudemiddelcircuit meldt: ${esc(X.refErr)}.</b>`]);
@@ -1838,7 +1838,7 @@ function mountDashboard(host, root) {
     if (X.mode === "rust" && X.power === false) li.push(`<b>De warmtepomp staat in stand-by (uit).</b> Er wordt niet verwarmd en geen tapwater gemaakt.`);
     else if (X.mode === "rust") li.push(`<b>De installatie staat in rust.</b> Compressor ${hz}, pomp 1 uit${X.bh1 ? "" : ", geen elektrische bijverwarming"}.`);
     else if (X.mode === "verwarming") li.push(`<b>Ruimteverwarming.</b> Compressor ${hz}, aanvoer ${deg(X.aanvoer)}, retour ${deg(X.retour)}${X.dT != null ? `, ΔT ${fmt(X.dT, 1)} °C` : ""}${X.flow != null ? `, ${fmt(X.flow, 1)} L/min` : ""}. Het water gaat naar de verdelers.`);
-    else li.push(`<b>Tapwater wordt opgewarmd.</b> Vat ${deg(X.tank)}${X.target != null ? `, doel ${fmt(X.target, 0)} °C` : ""}; aanvoer ${deg(X.aanvoer)}. De vloeren krijgen nu geen warmte: tapwater gaat voor.${X.bh1 ? " De booster heater helpt mee." : ""}`);
+    else li.push(`<b>Tapwater wordt opgewarmd.</b> Vat ${deg(X.tank)}${X.mode === "legionella" && X.leg_temp != null ? `, doel ${fmt(X.leg_temp, 0)} °C (legionella)` : X.target != null ? `, doel ${fmt(X.target, 0)} °C` : ""}; aanvoer ${deg(X.aanvoer)}. De vloeren krijgen nu geen warmte: tapwater gaat voor.${X.bh1 ? " De booster heater helpt mee." : ""}`);
     if (X.curveTarget != null && (X.opmode == null || /curve/i.test(X.opmode)))
       li.push(`<b>Stooklijn:</b> bij ${deg(X.buiten)} buiten hoort een aanvoer van ${deg(X.curveTarget)}${X.z1sp != null ? ` (de FTC6 mikt op ${deg(X.z1sp)})` : ""}${X.mode === "verwarming" && X.aanvoer != null ? `; nu ${deg(X.aanvoer)}` : ""}.`);
     if (X.heatNow > 0 && X.compRun) li.push(`<b>Warmte nu: ${fmt(X.heatNow / 1000, 2)} kW</b>${X.copNow != null ? ` bij ${fmt((X.pOut || 0) + (X.pIn || 0), 0)} W stroom: COP ${fmt(X.copNow, 1)}` : ""}.`);
@@ -1865,7 +1865,7 @@ function mountDashboard(host, root) {
     else if (X.tapFlow > 0) li.push(`De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))}, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan, dus niet via de Ecodan.`);
     if (X.tank != null && X.target != null && X.mode !== "tapwater" && X.mode !== "legionella") {
       const d = X.target - X.tank;
-      li.push(d <= 0 ? `<b>Het vat is op temperatuur</b> (${deg(X.tank)}).` : `<b>Vat ${deg(X.tank)}</b>, ${fmt(d, 1)} °C onder het doel. ${d <= 8 ? "Binnen de marge (hysterese), dus de warmtepomp start nog niet." : "Tapwater-opwarming volgt binnenkort."}`);
+      li.push(d <= 0 ? `<b>Het vat is op temperatuur</b> (${deg(X.tank)}).` : `<b>Vat ${deg(X.tank)}</b>, ${fmt(d, 1)} °C onder het doel. ${d <= X.hyst ? `Binnen de toegestane daling van ${fmt(X.hyst, 0)} °C, dus de warmtepomp start nog niet.` : "Tapwater-opwarming volgt binnenkort."}`);
     }
     const dag = X.dailyFresh || X.dailySince == null ? "vandaag" : `(dagwaarde van de FTC6 van ${dagTijd(X.dailySince)})`;
     if (X.dhw_prod != null) li.push(`<b>Tapwater ${dag}:</b> ${fmt(X.dhw_cons, 2)} kWh stroom in, ${fmt(X.dhw_prod, 2)} kWh warmte uit${X.dhw_cop ? `: COP ${fmt(X.dhw_cop, 2)}` : R.dhw_cop ? "" : X.dhw_cons > 0.2 ? `: COP ${fmt(X.dhw_prod / X.dhw_cons, 2)}` : ""}.`);

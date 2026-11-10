@@ -96,7 +96,7 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
   (*Fault code*) of een koudemiddelfout, als de Asgard onbereikbaar is of al lang geen nieuwe
   waarden stuurt, en als er **geen warmtevraag** is terwijl een kamer al 30 minuten minstens 0,4 °C
   onder de ingestelde waarde zit en IN1 al 30 minuten uit staat. Dan komt de vraag van de thermostaat
-  niet bij de FTC6 aan, bijvoorbeeld doordat het Alpha-basisstation is vastgelopen.
+  niet bij de FTC6 aan, bijvoorbeeld doordat het Möhlenhoff-basisstation is vastgelopen.
 - **Alleen lezen:** het panel bedient niets. De regeling en het tapwater wijzig je dus niet
   per ongeluk vanaf het dashboard.
 - **Licht en donker thema.** Beide thema's hebben dezelfde matte opbouw, lettertypes en maten. Het
