@@ -1,0 +1,12 @@
+{
+  "name": "ecodash-3d",
+  "private": true,
+  "description": "Bron van de 3D-weergave van het Ecodan Dashboard (wordt gebundeld naar custom_components/ecodash/frontend/ecodash-3d.js)",
+  "scripts": {
+    "build": "esbuild src/view3d.js --bundle --minify --format=esm --legal-comments=none --outfile=../custom_components/ecodash/frontend/ecodash-3d.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "three": "0.170.0"
+  }
+}
