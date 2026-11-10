@@ -326,7 +326,7 @@ const pipe = (d, col, g, thin = false) =>
 const nb = (x, y, n) => `<g class="nb"><circle cx="${x}" cy="${y}" r="6.2"/><text x="${x}" y="${y + 2.6}">${n}</text></g>`;
 const pwr = (d, g) => `<path class="pwr" d="${d}"/><path class="fl f-${g} thin" d="${d}"/>`;
 
-// HomeWizard kWh-meter (1 fase, DIN-rail): display met totaalteller (Σ … kWh), live vermogen en wifi-sterkte,
+// HomeWizard kWh-meter (1 fase, DIN-rail): display met het verbruik van vandaag (kWh), live vermogen en wifi-sterkte,
 // de twee knoppen en het pulslampje (1 puls per Wh, knippert dus sneller bij meer vermogen)
 function hwSvg(x, k, c, naam) {
   const y = 834, bars = [0, 1, 2, 3, 4].map(i =>
@@ -336,13 +336,12 @@ function hwSvg(x, k, c, naam) {
     <path class="hwlogo" d="M${x + 13},${y + 7} l-5,8 h3.6 l-2,7 l6.4,-9.2 h-3.8 l2.2,-5.8 z"/>
     <text class="hwbrand" x="${x + 20}" y="${y + 18}">homewizard</text>
     <rect class="tlcd" x="${x + 7}" y="${y + 25}" width="78" height="59" rx="2"/>
-    <text class="hwl" x="${x + 11}" y="${y + 37}" style="font-size:10px;font-weight:700">Σ</text>
-    <text class="hwseg" id="hw-${k}-tot" x="${x + 81}" y="${y + 56}" text-anchor="end"></text>
+    <text class="hwl" x="${x + 11}" y="${y + 36}">vandaag</text>
+    <text class="hwseg" id="hw-${k}-day" x="${x + 81}" y="${y + 56}" text-anchor="end"></text>
     <text class="hwl" x="${x + 81}" y="${y + 66}" text-anchor="end">kWh</text>
     <g id="hw-${k}-wifi">${bars}</g>
     <text class="hwl" id="hw-${k}-w" x="${x + 81}" y="${y + 79}" text-anchor="end" style="font-size:9px;font-weight:700"></text>
-    <text class="t b" x="${x + 46}" y="${y + 99}" text-anchor="middle" style="font-size:10.5px">${naam}</text>
-    <text class="t s" id="v-e${k}" x="${x + 46}" y="${y + 111}" text-anchor="middle" style="font-size:8.6px"></text>
+    <text class="t b" x="${x + 46}" y="${y + 104}" text-anchor="middle" style="font-size:10.5px">${naam}</text>
     <rect class="hwkey" x="${x + 9}" y="${y + 119}" width="22" height="17" rx="2"/>
     <path class="hwico" d="M${x + 14.5},${y + 127} a8,8 0 0 1 11,0 M${x + 16.6},${y + 129.4} a5,5 0 0 1 6.8,0"/>
     <circle cx="${x + 20}" cy="${y + 132}" r="1.1" style="fill:#fff"/>
@@ -854,7 +853,7 @@ const C = {
   curve: { name: "Stooklijn (compensatiecurve)", where: "Instelling in de FTC6", text: "Met de regeling op Heat Compensation Curve bepaalt de FTC6 de aanvoertemperatuur uit de buitentemperatuur (TH7): hoe kouder buiten, hoe warmer het water naar de vloeren. Tot en met het koude punt geldt de hoogste aanvoer, vanaf het warme punt de laagste, en daartussen loopt de lijn recht (via het aanpassingspunt als dat is ingesteld). De groene stip is de huidige buitentemperatuur op de lijn: de aanvoer waar de FTC6 volgens de ingestelde punten op mikt. De Asgard meldt ook het aanvoerdoel dat de FTC6 zelf berekent (Zone 1 Setpoint Value); dat staat erbij en hoort gelijk te zijn aan de lijn. De rode stip is de werkelijke aanvoer (THW1) zodra de vloerverwarming draait. De punten zelf geeft de FTC6 niet door; ze komen uit Configureren. Pas ze daar aan als je de stooklijn op het Ecodan-display verandert." },
   zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. De Asgard meldt het aanvoerdoel van die zone (Zone 1 Setpoint Value) en de kamertemperatuur zoals de FTC6 die kent (Zone 1 Room Temp, van de voeler in het bedieningspaneel in de technische ruimte). Bij regeling op de stooklijn speelt die kamertemperatuur geen rol." },
   absent: { name: "Niet in jouw installatie", where: "Komen niet voor in jouw installatie", text: "De Asgard-firmware kent ook entiteiten voor koelen, een tweede zone, een tweede booster-trap en pomp 3 (zone 2). Jouw installatie heeft die onderdelen niet; als ze in Home Assistant staan, kun je ze uitschakelen." },
-  meterOut: { name: "kWh-meter buitenunit", where: "Meterkast", text: "Meet het werkelijke stroomverbruik van de groep naar de buitenunit: compressor en ventilator. Bij de gebruikelijke Ecodan-bedrading krijgt de cilinderunit zijn regelstroom (FTC6, wifi, pomp 1, 3-wegklep) via de buitenunit, dus dan telt dat verbruik hier mee. Dit is de meting om op te vertrouwen; de 'consumed'-waarden van de Asgard zijn schattingen van de FTC6. Boven 30 W lopen er gele bolletjes over de stroomkabel. Het display toont zoals op de HomeWizard de totaalteller (Σ kWh), daaronder het actuele vermogen en de wifi-sterkte van de meter; het rode lampje knippert één keer per verbruikte Wh." },
+  meterOut: { name: "kWh-meter buitenunit", where: "Meterkast", text: "Meet het werkelijke stroomverbruik van de groep naar de buitenunit: compressor en ventilator. Bij de gebruikelijke Ecodan-bedrading krijgt de cilinderunit zijn regelstroom (FTC6, wifi, pomp 1, 3-wegklep) via de buitenunit, dus dan telt dat verbruik hier mee. Dit is de meting om op te vertrouwen; de 'consumed'-waarden van de Asgard zijn schattingen van de FTC6. Boven 30 W lopen er gele bolletjes over de stroomkabel. Het display toont het verbruik van vandaag (kWh), daaronder het actuele vermogen en de wifi-sterkte van de meter; het rode lampje knippert één keer per verbruikte Wh." },
   meterIn: { name: "kWh-meter binnenunit", where: "Meterkast", text: "Meet de aparte groep naar de cilinderunit. Die voedt vooral de 2 kW booster heater (BH1). Die gaat aan bij de legionella-run: de warmtepomp brengt het vat naar ±50–55 °C en de booster heater duwt het laatste stuk naar 60 °C. Ook als back-up bij strenge vorst kan hij bijspringen. Op vol vermogen zie je hier ongeveer 2000 W." },
 };
 C.wh = C.tank;
@@ -1151,7 +1150,7 @@ svg.run-tap .tapfix{stroke:var(--dhw);stroke-width:2.2}
 .tlcd{fill:var(--lcd);stroke:var(--lcd-edge);stroke-width:.6}
 .hwbody{fill:var(--plate);stroke:var(--shape-edge);stroke-width:1.3;filter:url(#bevel)}
 .hwlogo{fill:var(--ok)} .hwbrand{font-family:var(--f-body);font-size:10.5px;font-weight:800;letter-spacing:-.02em;fill:var(--ok)}
-.hwseg{fill:#1e2a20;font-family:var(--f-mono);font-size:14px;font-weight:500;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.hwseg{fill:#1e2a20;font-family:var(--f-mono);font-size:17px;font-weight:500;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
 .hwl{fill:#1e2a20;font-family:var(--f-body);font-size:7.5px;font-weight:600;font-variant-numeric:tabular-nums}
 .hwl.s{font-size:6.5px;fill:var(--muted)}
 .hwbar{fill:#1e2a20;opacity:.15} .hwbar.on{opacity:1}
@@ -1686,13 +1685,12 @@ function mountDashboard(host, root) {
     setT("v-z1mix", `${deg(X.z1_feed)} / ${deg(X.z1_return)}`, "off");
     setT("v-mixing", deg(X.mixing), "off");
     setT("v-pump2", onoff(X.pump2), "off");
-    for (const [k, w, tot, bars, day] of [["out", X.pOut, X.eOutTot, X.wifiOut, X.mOut], ["in", X.pIn, X.eInTot, X.wifiIn, X.mIn]]) {
+    for (const [k, w, bars, day] of [["out", X.pOut, X.wifiOut, X.mOut], ["in", X.pIn, X.wifiIn, X.mIn]]) {
       setT(`hw-${k}-w`, w == null ? "– W" : fmt(w, w < 100 ? 1 : 0) + " W");
-      setT(`hw-${k}-tot`, tot == null ? "-----.--" : tot.toFixed(2).padStart(8, "0"));
+      setT(`hw-${k}-day`, day == null ? "–,––" : fmt(day, 2));
       $$(`#hw-${k}-wifi .hwbar`).forEach(b => b.classList.toggle("on", bars != null && +b.dataset.i < bars));
       const wg = $(`#hw-${k}-wifi`);
       if (wg) wg.style.opacity = bars == null ? ".35" : "";
-      setT(`v-e${k}`, day == null ? "" : `vandaag ${fmt(day, 2)} kWh`);
       // pulslampje: 1 puls per Wh, dus om de 3600/W seconden
       const led = $(`#hw-${k}-led`);
       if (led) { led.classList.toggle("on", w > 1); if (w > 1) led.style.animationDuration = `${clamp(3600 / w, 0.4, 60).toFixed(2)}s`; }

@@ -226,8 +226,8 @@ de entiteitenlijst staat dan *afgeleid*. De kWh-meters worden gevonden als
 sensor met `ecodan`, `buitenunit`/`binnenunit` en `vermogen`/`power` in de naam. Bij elke meter
 wordt de totaalteller (`..._energie_import`) gezocht, en de wifi-sterkte van de meter (een sensor
 naast het vermogen met `wifi` in de naam, bij voorkeur `..._wifi_sterkte` in %, anders `..._wifi_rssi`
-in dBm). In het schema zijn de meters getekend als HomeWizard-kWh-meters: het display toont de
-totaalteller (Σ kWh), het actuele vermogen en de wifi-sterkte als 0 tot 5 streepjes. Het rode
+in dBm). In het schema zijn de meters getekend als HomeWizard-kWh-meters: het display toont het
+verbruik van vandaag (kWh), het actuele vermogen en de wifi-sterkte als 0 tot 5 streepjes. Het rode
 pulslampje knippert één keer per Wh, dus sneller bij meer vermogen. Het verbruik van vandaag is de teller nu
 min de stand om middernacht uit de historie. Zonder teller rekent het panel met de
 5-minutenstatistiek van het vermogen.
