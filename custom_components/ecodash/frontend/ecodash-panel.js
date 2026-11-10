@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.19.0";
+const ECODASH_VERSION = "1.20.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -1107,6 +1107,18 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .board.full .viewport{flex:1;min-height:0;touch-action:none}
 .board.full svg.schema{height:100%;aspect-ratio:auto}
 .board.full .board-foot{display:none}
+.v3d{width:100%;aspect-ratio:1200/1012;background:#161616;position:relative}
+.v3d[hidden]{display:none}
+.v3d .v3d-canvas{display:block;width:100%!important;height:100%!important;outline:none;touch-action:none;cursor:grab}
+.v3d .v3d-msg{position:absolute;inset:0;display:grid;place-items:center;color:#9e9e9e;font-size:14px;padding:16px;text-align:center}
+.board.full .v3d{height:100%;aspect-ratio:auto}
+.vb3d svg.schema{display:none}
+.vtoggle{display:flex;gap:4px;margin-right:auto;align-items:center}
+.vt{height:40px;min-width:48px;padding:0 12px;border-radius:10px;background:var(--surface);border:1px solid var(--line);color:var(--muted);
+  font-family:var(--f-display);font-weight:700;font-size:16px;letter-spacing:.04em;cursor:pointer}
+.vt.on{color:var(--surface);background:var(--ink);border-color:var(--ink)}
+@media (max-width:600px){.vt{height:34px;min-width:42px;font-size:14px;border-radius:8px}}
+.board.full .vtoggle{display:none}
 .board.full .zoombar{position:absolute;flex-direction:column;padding:0;border:0;right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom))}
 .board-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1px solid var(--line)}
 /* SVG */
@@ -1349,8 +1361,12 @@ const TEMPLATE = (floors, curve, channels) => `
     <section class="kpis" id="kpis" aria-label="Kerncijfers"></section>
     <div class="board" id="board">
       <div class="viewport" id="vp">${schemaSvg(floors, curve, channels)}
+        <div class="v3d" id="v3d" hidden></div>
       </div>
       <div class="zoombar">
+        <div class="vtoggle" role="group" aria-label="Weergave van het schema">
+          <button type="button" class="vt on" id="vt-2d" aria-pressed="true">2D</button><button type="button" class="vt" id="vt-3d" aria-pressed="false">3D</button>
+        </div>
         <button class="zb" id="z-in" aria-label="Inzoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
         <button class="zb" id="z-out" aria-label="Uitzoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
         <button class="zb" id="z-fit" aria-label="Hele schema tonen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1.5"/><path d="M9 10l-2 2 2 2M15 10l2 2-2 2"/></svg></button>
@@ -1366,7 +1382,7 @@ const TEMPLATE = (floors, curve, channels) => `
           <span><i style="border-color:var(--elec)"></i>stroom 230 V</span>
           <span><i class="dash"></i>stuursignaal</span>
         </div>
-        <span class="legend">Lopende bolletjes = er stroomt nu iets · knijp, dubbeltik of gebruik + om in te zoomen, sleep om te schuiven</span>
+        <span class="legend" id="hint">Lopende bolletjes = er stroomt nu iets · knijp, dubbeltik of gebruik + om in te zoomen, sleep om te schuiven</span>
       </div>
     </div>
     <div class="grid">
@@ -1797,6 +1813,7 @@ function mountDashboard(host, root) {
 
     renderBanners(X);
     renderNow(X);
+    st.v3d?.update(view3dState(X));
     if (st.sel) showComp(st.sel, st.selKey, true); else if (!detail.innerHTML) intro();
   }
 
@@ -1886,6 +1903,7 @@ function mountDashboard(host, root) {
     <p>De groene getallen zijn live waarden uit Home Assistant. Klik op een onderdeel of een entiteit voor uitleg.</p>`;
   }
   function highlight(c) {
+    st.v3d?.highlight(c);
     svg.classList.toggle("focus", !!c);
     $$(".comp").forEach(g => g.classList.toggle("on", !!c && (g.dataset.c === c || (g.dataset.also || "").split(" ").includes(c))));
   }
@@ -1930,6 +1948,98 @@ function mountDashboard(host, root) {
     b.addEventListener("mouseenter", () => highlight(byKey[b.dataset.e].c));
     b.addEventListener("mouseleave", () => highlight(st.sel));
   });
+
+  /* 2D of 3D: de 3D-weergave (three.js + model, ±4,5 MB) wordt pas geladen bij de eerste keer 3D en tekent alleen;
+     alle waarden komen uit collect() via view3dState(). Klikken in 3D werkt als in 2D: uitleg en markering. */
+  const v3dEl = $("#v3d"), MFLOOR = { "2e": 0, "1e": 1, "bg": 2 };
+  const TEXT_ENT = { buiten_temp: "buiten", heetgas: "heetgas", compressor_hz: "freq", wifi: "wifi", in1: "vraag", warm_leiding: "tapwarm",
+    tapvoeler: "tapvoeler", tap_doel: "dhw_sp", thw5a: "tank2", thw5b: "tank", thw1: "aanvoer", bh1_aan: "bh1", platenwisselaar: "cond",
+    th2: "th2", pomp_aan: "pump1", thw2: "retour", debiet: "flow", vermogen_buiten: "p_out", kwh_buiten: "e_out",
+    vermogen_binnen: "p_in", kwh_binnen: "e_in", stooklijn_buiten: "buiten", stooklijn_ftc6: "z1_sp" };
+  const roomAt = {};
+  R.floors.forEach((f, fi) => f.kamers.forEach((k, j) => { roomAt[slug(k.naam)] = [fi, j]; }));
+  function view3dState(X) {
+    const f1 = (v, d = 1) => (v == null ? "–" : fmt(v, d)), oo = b => (b == null ? "–" : b ? "aan" : "uit");
+    const lo = loopsOpen(X), heating = !!X.pump1 && !X.dhw, san = X.san ? "tapwater" : "uit";
+    const state = { compressor_aan: X.compRun ? "on" : "off", pomp_aan: X.pump1 ? "on" : "off", bh1_aan: X.bh1 ? "on" : "off",
+      stand: !X.pump1 ? "uit" : X.dhw ? "tapwater" : "vloer" };
+    for (const [fl, fi] of Object.entries(MFLOOR)) {
+      const o = lo[fi] || [];
+      state[`verdieping_${fl}`] = heating && o.some(Boolean) ? "vloer" : "uit";
+      for (let i = 0; i < 8; i++) state[`lus_${fl}_${i}`] = heating && o[i] ? "vloer" : "uit";
+    }
+    const text = {
+      buiten_temp: f1(X.buiten), heetgas: f1(X.heetgas), th2: f1(X.th2), platenwisselaar: f1(X.cond),
+      compressor_hz: X.freq > 0 ? fmt(X.freq, 0) : X.compByMeter ? "aan" : X.freq == null ? "–" : "0",
+      wifi: f1(X.wifi, 0), in1: X.vraagSrc === "signaal" ? oo(X.vraag) : "–",
+      warm_leiding: f1(X.tapWarm), tapvoeler: f1(X.probe), tap_doel: f1(X.target, 0),
+      thw5a: fixedNo(X.tank2) ? "–" : f1(X.tank2), thw5b: f1(X.tank), thw1: f1(X.aanvoer), thw2: f1(X.retour), debiet: f1(X.flow),
+      bh1_aan: oo(X.bh1), pomp_aan: oo(X.pump1), basisstation: f1(X.mW),
+      vermogen_buiten: X.pOut == null ? "–" : fmt(X.pOut, X.pOut < 100 ? 1 : 0), vermogen_binnen: X.pIn == null ? "–" : fmt(X.pIn, X.pIn < 100 ? 1 : 0),
+      kwh_buiten: f1(X.mOut, 2), kwh_binnen: f1(X.mIn, 2),
+      stooklijn_buiten: f1(X.buiten), stooklijn_doel: f1(X.curveTarget), stooklijn_ftc6: f1(X.z1sp),
+      stooklijn_param: (() => { const c = CURVE.raw, g = v => fmt(v, 0);
+        return `koud ${g(c.koud[0])} → ${g(c.koud[1])} · warm ${g(c.warm[0])} → ${g(c.warm[1])}` + (CURVE.shift ? ` · ${CURVE.shift > 0 ? "+" : ""}${g(CURVE.shift)}` : ""); })(),
+    };
+    const alpha = {}, heat = {};
+    for (const [k, [fi, j]] of Object.entries(roomAt)) {
+      const v = X.rooms[fi]?.[j]; text[k] = f1(v?.t); alpha[k] = R.floors[fi].kamers[j].sp; heat[k] = v?.heat ?? null;
+    }
+    // aandrijvingen in het model: stelmotor_<verdieping>_<lus> of _zone (één op de aanvoer); rood = kraan open, zoals in 2D
+    const act = {};
+    for (const [fl, fi] of Object.entries(MFLOOR)) {
+      const o = lo[fi] || [];
+      act[`stelmotor_${fl}_zone`] = o.some(Boolean);
+      o.forEach((v, i) => { act[`stelmotor_${fl}_${i}`] = !!v; });
+    }
+    // lampjes op het basisstation: IN1, aan, dan de zones in dezelfde volgorde als in 2D
+    const leds = { basisstation_led_0: !!X.vraag, basisstation_led_1: X.mOn !== false };
+    R.channels.forEach((c, i) => { leds[`basisstation_led_${i + 2}`] = X.mOn !== false && !!(c.at && X.rooms[c.at[0]]?.[c.at[1]]?.heat); });
+    const curveOn = X.opmode == null || /curve/i.test(X.opmode);
+    return {
+      state, text, alpha, heat, act, leds,
+      obj: { buiten_ventilator: X.compRun && !X.defrost ? "on" : "off", pomp18_waaier: san, wisselaar_tapwater_secundair: san,
+             pipe_tapcircuit_warm: san, pipe_tapcircuit_koud: san },
+      lcd: { mode: X.mode, dhwProhibit: !!X.dhwProhibit, holiday: !!bin(R.holiday), defrost: !!X.defrost, bh1: !!(X.bh1 || X.imm),
+             compRun: X.compRun, dhwMode: X.whMode, tank: X.tank, opmode: X.opmode, z1sp: X.z1sp, power: X.power, shift: CURVE.shift || 0 },
+      chart: { curve: CURVE, t: X.buiten, thw1: heating && X.aanvoer != null ? X.aanvoer : null, curveOn },
+      freq: X.compRun ? (X.freq > 0 ? X.freq : (X.pOut || 0) / 25 || 25) : 0,
+    };
+  }
+  st.view = (() => { try { return localStorage.getItem("ecodash-view") === "3d" ? "3d" : "2d"; } catch (e) { return "2d"; } })();
+  const here = import.meta.url, asset = f => new URL(`./${f}?v=${ECODASH_VERSION}`, here).href;
+  async function load3d() {
+    if (st.v3d || st.v3dLoading) return;
+    st.v3dLoading = true;
+    try {
+      const { EcodashView3D } = await import(asset("ecodash-3d.js"));
+      st.v3d = new EcodashView3D(v3dEl, {
+        model: asset("ecodash-3d.glb"),
+        onPick: (c, textKey) => {
+          const k = textKey && (TEXT_ENT[textKey] || (roomAt[textKey] ? `room_${roomAt[textKey][0]}_${roomAt[textKey][1]}` : null));
+          if (k && byKey[k]) showEnt(k); else if (c && C[c]) showComp(c); else clearSel();
+        },
+      });
+      if (st.X) st.v3d.update(view3dState(st.X));
+      st.v3d.highlight(st.sel);
+      st.v3d.setActive(st.view === "3d");
+    } catch (e) {
+      v3dEl.innerHTML = `<div class="v3d-msg">De 3D-weergave kon niet laden: ${esc(e.message || e)}</div>`;
+      console.error("Ecodan-panel 3D:", e);
+    } finally { st.v3dLoading = false; }
+  }
+  function setView(m) {
+    st.view = m === "3d" ? "3d" : "2d";
+    try { localStorage.setItem("ecodash-view", st.view); } catch (e) {}
+    const is3 = st.view === "3d";
+    board.classList.toggle("vb3d", is3); v3dEl.hidden = !is3;
+    for (const [id, on] of [["#vt-2d", !is3], ["#vt-3d", is3]]) { const b = $(id); b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
+    $("#hint").textContent = is3 ? "Lopende blokjes = er stroomt nu iets · sleep om te draaien, knijp of scroll om te zoomen, tik op een onderdeel voor uitleg"
+      : "Lopende bolletjes = er stroomt nu iets · knijp, dubbeltik of gebruik + om in te zoomen, sleep om te schuiven";
+    if (is3) load3d();
+    st.v3d?.setActive(is3);
+    if (!is3) requestAnimationFrame(applyZoom);
+  }
 
   /* zoomen en schuiven: de viewBox volgt schaal s (css-px per tekeneenheid) en middelpunt (cx, cy) */
   const VB = { w: 1200, h: 1012 }, vp = $("#vp"), board = $("#board");
@@ -1992,9 +2102,13 @@ function mountDashboard(host, root) {
     else if (!zm.fit) { e.preventDefault(); zm.cx += e.deltaX / zm.s; zm.cy += e.deltaY / zm.s; applyZoom(); }
   }, { passive: false });
   svg.addEventListener("dblclick", e => { e.preventDefault(); if (zm.s > fitS() * 3.5) { zm.fit = true; applyZoom(); } else zoomAt(2, e.clientX, e.clientY); });
-  $("#z-in").onclick = () => zoomMid(1.5);
-  $("#z-out").onclick = () => zoomMid(1 / 1.5);
-  $("#z-fit").onclick = () => { zm.fit = true; applyZoom(); };
+  const is3d = () => st.view === "3d" && st.v3d;
+  $("#z-in").onclick = () => (is3d() ? st.v3d.zoom(1.5) : zoomMid(1.5));
+  $("#z-out").onclick = () => (is3d() ? st.v3d.zoom(1 / 1.5) : zoomMid(1 / 1.5));
+  $("#z-fit").onclick = () => { if (is3d()) st.v3d.home(); else { zm.fit = true; applyZoom(); } };
+  $("#vt-2d").onclick = () => setView("2d");
+  $("#vt-3d").onclick = () => setView("3d");
+  setView(st.view);
   const ICON_FULL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>`;
   const ICON_EXIT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>`;
   // volledig scherm: het schema vult het hele scherm en begint zo groot dat het de hoogte of breedte vult
@@ -2103,7 +2217,7 @@ function mountDashboard(host, root) {
     if (mid.getTime() !== st.midnight || st.measured.src === "statistiek") loadMeasured();   // nieuwe dag, of statistiek bijwerken
     else { st.sig = ""; schedule(); }                                                         // "geen nieuwe waarden"-check
   }, 5 * 60e3));
-  return () => { st.timers.forEach(clearInterval); cancelAnimationFrame(raf); host._onHass = null; ro.disconnect();
+  return () => { st.timers.forEach(clearInterval); cancelAnimationFrame(raf); host._onHass = null; ro.disconnect(); st.v3d?.dispose();
     document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("keydown", onKey); };
 }
 

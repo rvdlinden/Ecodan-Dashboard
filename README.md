@@ -63,6 +63,15 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
   om in te zoomen, en sleep om te schuiven. De knop ⛶ zet het schema schermvullend en begint dan
   zo groot dat het de hoogte (staand) of breedte (liggend) vult. Op een pc zoom je met Ctrl +
   scrollwiel of knijpen op het touchpad.
+- **2D of 3D:** met de knoppen *2D* en *3D* onder het schema wissel je tussen het schema en een
+  3D-model van de installatie. De 3D-weergave gebruikt precies dezelfde entiteiten, overrides en
+  berekeningen als 2D: de stand, de kranen per lus, de warmtevraag, de stooklijn, de ingestelde
+  temperaturen en de kWh-meters komen allemaal uit het 2D-panel. Klik je in 3D op een onderdeel, dan
+  licht het op en verschijnt de uitleg in hetzelfde vak als bij 2D, met de entiteiten gemarkeerd in de
+  lijst; een klik op een lege plek zet het terug. Sleep om te draaien, knijp of scroll om te zoomen; de
+  knoppen + en − zoomen, de middelste knop zet de camera terug. Het model en three.js (samen ruim 4,5 MB)
+  worden pas geladen als je de eerste keer op *3D* klikt; het panel onthoudt je keuze per apparaat.
+  De losse kaart `ecodan-3d-card` (en `/config/www/ecodan3d/`) is daarvoor niet meer nodig.
 - **Kamertemperaturen:** per kamer de temperatuur van de slimme meter naast de (domme)
   thermostaat, in het schema, in de lijst *Kamertemperaturen* en in *Wat gebeurt er nu?*
 - **Waarden bij elk onderdeel:** buitentemperatuur (TH7), compressorfrequentie, persgas, zuiggas,
@@ -404,8 +413,16 @@ de kWh-meters. Alleen de dagtotalen van energie en COP werkt de FTC6 met vertrag
 custom_components/ecodash/
   __init__.py, config_flow.py, const.py   registratie van het panel en de opties
   frontend/ecodash-panel.js               het panel: entiteiten zoeken, SVG-schema en weergave
+  frontend/ecodash-3d.js                  3D-weergave (gebundeld, met three.js), alleen tekenen
+  frontend/ecodash-3d.glb                 het 3D-model
+frontend3d/                               bron van de 3D-weergave
+  src/view3d.js, src/screens.js
 ```
 
-Het panel is één JavaScript-module zonder build-stap: pas `ecodash-panel.js` aan en herlaad
+De 3D-weergave bevat geen eigen logica: `view3dState()` in het panel zet de uitkomst van `collect()`
+om naar een momentopname per sleutel van het model, en `view3d.js` tekent die. Na een wijziging in
+`frontend3d/src/` bouw je de bundel opnieuw met `cd frontend3d && npm install && npm run build`.
+
+Het 2D-panel is één JavaScript-module zonder build-stap: pas `ecodash-panel.js` aan en herlaad
 de integratie. Verhoog bij een release `version` in `manifest.json` en `ECODASH_VERSION` in
 `ecodash-panel.js`, en maak een GitHub-release met tag `X.Y.Z`, zodat HACS de update meldt.
