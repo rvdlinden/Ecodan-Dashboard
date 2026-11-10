@@ -12,6 +12,9 @@ CONF_THEME = "thema"
 CONF_PREFIX = "prefix"
 CONF_VALVE_DHW = "klep_aan_is_tapwater"
 CONF_OVERRIDES = "overrides"
+# 3D-weergave: snelheid van de stroomblokjes (1 = standaard) en gloed (0 = uit, 1 = standaard, 3 = maximaal)
+CONF_3D_SPEED = "snelheid_3d"
+CONF_3D_GLOW = "gloed_3d"
 # Stooklijn zoals ingesteld op het Ecodan-display (de FTC6 geeft de punten niet door).
 CONF_CURVE_OUT_COLD = "stooklijn_buiten_koud"      # buitentemperatuur van het koude punt
 CONF_CURVE_FLOW_COLD = "stooklijn_aanvoer_koud"    # aanvoertemperatuur bij het koude punt (en kouder)
@@ -39,6 +42,8 @@ DEFAULTS = {
     CONF_PREFIX: "technische_ruimte_ecodan",
     CONF_VALVE_DHW: True,
     CONF_OVERRIDES: {},
+    CONF_3D_SPEED: 0.3,
+    CONF_3D_GLOW: 1.0,
     CONF_CURVE_OUT_COLD: -7,
     CONF_CURVE_FLOW_COLD: 32,
     CONF_CURVE_OUT_WARM: 12,

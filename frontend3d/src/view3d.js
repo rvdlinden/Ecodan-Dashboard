@@ -14,7 +14,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { lcdSvg, drawAlpha, curveAt } from './screens.js';
+import { lcdSvg, drawAlpha, curveAt, meterSvg } from './screens.js';
 
 const BLOOM = 1;                 // render-laag met alles wat gloeit
 const HL = new THREE.Color('#3b82f6');   // markering van het gekozen onderdeel
@@ -36,12 +36,23 @@ const PICK = [
   [/^(thermostaat_|alpha_display_|txt_slaapkamer_|txt_woonkamer$)/, 'tstat'],
   [/^(stooklijn_|txt_stooklijn_)/, 'curve'], [/^(pipe_cv_aanvoer|pipe_retour|sensoren)$/, 'cyl'],
 ];
+// Licht thema: achtergrond, behuizingen en tekstvlakken die in het (donkere) model donker zijn. Kleuren zoals het 2D-panel.
+const LIGHT_BG = '#e6ebe8';
+const LIGHT_OBJ = {
+  buitenunit_kast: '#d3d7da', buitenunit_lamellen: '#b4b9bd', buitenunit_voeten: '#8f959a', buitenunit_rooster: '#6b7176', buiten_ventilator: '#6f757a',
+  ftc6_regelaar: '#fbfbfa', ftc6_wifi: '#1b2422', basisstation_mohlenhoff: '#fbfbfa',
+  bedieningsscherm: '#f2f3f0', bedieningsscherm_toetsen: '#d2d5d1',
+  stooklijn_raster: '#c9d1cd', stooklijn_assen: '#7b8581', kwh_meter_buiten: '#ffffff', kwh_meter_binnen: '#ffffff',
+};
+const DARK_OBJ = { kwh_meter_buiten: '#2c2c2c', kwh_meter_binnen: '#2c2c2c' };   // donker thema zoals de meter in 2D
+const LIGHT_TXT_BG = { '#161616': LIGHT_BG, '#3b3f46': '#d3d7da', '#2b2f36': '#fbfbfa', '#1f2125': '#fbfbfa' };
+const LIGHT_TXT_FG = { '#ffffff': '#1b2422', '#a3a3a3': '#4b5563' };
 export const pickOf = (name) => { const r = PICK.find(([re]) => re.test(name)); return r ? r[1] : null; };
 
 export class EcodashView3D {
-  /** el: lege container; opts: { model, onPick(comp, textKey), onReady(), onError(msg), glow, flowSpeed } */
+  /** el: lege container; opts: { model, labelsLight, dark, onPick(comp, textKey), onReady(), onError(msg), glow, flowSpeed } */
   constructor(el, opts) {
-    this.el = el; this.o = { glow: 1, flowSpeed: 1, ...opts };
+    this.el = el; this.o = { glow: 1, flowSpeed: 1, dark: true, ...opts };
     this.V = null; this.sel = null; this.active = true; this._last = {};
     el.innerHTML = '<div class="v3d-msg">3D-model laden…</div>';
     this._msg = el.firstChild;
@@ -75,6 +86,15 @@ export class EcodashView3D {
   /* ------------------------------------------------------------ publiek */
   update(V) { this.V = V; if (this._ready) this._apply(); }
   highlight(comp) { this.sel = comp || null; if (this._ready) { this._applyHighlight(); this._requestFrame(); } }
+  setTheme(dark) {
+    if (this.o.dark === !!dark) return;
+    this.o.dark = !!dark;
+    if (this._ready) { this._last = {}; this._applyTheme(); this._apply(); }
+  }
+  setOptions({ glow, flowSpeed } = {}) {
+    if (flowSpeed != null && isFinite(flowSpeed)) this.o.flowSpeed = Math.max(0, +flowSpeed);
+    if (glow != null && isFinite(glow) && +glow !== this.o.glow) { this.o.glow = Math.max(0, +glow); if (this._ready) { this._setupBloom(); this._resize(); } }
+  }
   setActive(on) { this.active = !!on; if (on) { this._resize(); this._loop(); } }
   zoom(f) {
     const c = this._controls, d = this._camera.position.clone().sub(c.target);
@@ -110,6 +130,8 @@ export class EcodashView3D {
       if (o.name === 'tank_mantel') { o.material.depthWrite = false; o.renderOrder = 3; }
       if (o.name === 'labels') o.renderOrder = 10;   // labels altijd over het (doorzichtige) vat heen
     });
+    for (const o of Object.values(this._objs)) o.userData.c0 = o.material.color.clone();
+    this._labelsDark = this._objs.labels?.material.map || null;
     this._initScreens();
     this._buildSine();
     this._camera.position.fromArray(X.camera.position);
@@ -119,6 +141,7 @@ export class EcodashView3D {
     this._setupBloom();
     // uitgangskleur per object, zodat markeren en weer loslaten de juiste kleur terugzet
     for (const o of Object.values(this._objs)) o.userData.e0 = [o.material.emissive?.clone(), o.material.emissiveIntensity];
+    this._applyTheme();
     this._msg.remove();
     this._ready = true;
     this._resize();
@@ -145,7 +168,9 @@ export class EcodashView3D {
         f._cs = f.gradient.map((c) => new THREE.Color(c).lerp(new THREE.Color('#ffffff'), 0.25)); f._ct = new THREE.Color();
         for (let i = 0; i < count; i++) mesh.setColorAt(i, f._cs[0]);
       }
-      return { ...f, pathsV: paths, mesh, count, active: false, scl: new THREE.Vector3(f.radius * 2, f.spacing / 6, f.radius * 2) };
+      const fl = { ...f, pathsV: paths, mesh, count, active: false, scl: new THREE.Vector3(f.radius * 2, f.spacing / 6, f.radius * 2) };
+      this._flowColor(fl);
+      return fl;
     });
     this._tmp = new THREE.Matrix4(); this._pos = new THREE.Vector3(); this._quat = new THREE.Quaternion(); this._up = new THREE.Vector3(0, 1, 0);
   }
@@ -162,7 +187,9 @@ export class EcodashView3D {
       if (this._last[t.object] === txt) continue;
       this._last[t.object] = txt;
       if (o.material.map) o.material.map.dispose();
-      o.material.map = this._textTex(o, txt, t); o.material.color.set('#ffffff');
+      const bg = this.o.dark ? t.bg : (LIGHT_TXT_BG[t.bg] || t.bg);
+      const fg = this.o.dark || bg === t.bg ? t.fg : (LIGHT_TXT_FG[t.fg] || t.fg);
+      o.material.map = this._textTex(o, txt, { ...t, bg, fg }); o.material.color.set('#ffffff');
       o.material.emissive = new THREE.Color('#ffffff'); o.material.emissiveMap = o.material.map; o.material.emissiveIntensity = 0.6;
       o.userData.e0 = [o.material.emissive.clone(), 0.6];
       o.material.needsUpdate = true;
@@ -170,9 +197,10 @@ export class EcodashView3D {
     this._pulse = [];
     for (const c of X.colors) {
       const o = this._objs[c.object]; if (!o) continue;
-      const st = this._st(c.key, c.object), col = c.map[st];
+      const st = this._st(c.key, c.object), glow = !!(c.glow && c.glow.includes(st));
+      let col = c.map[st];
+      if (col && !this.o.dark && !glow) col = '#' + new THREE.Color(col).lerp(new THREE.Color('#ffffff'), 0.5).getHexString();   // uit: lichter op licht
       if (col) o.material.color.set(col);
-      const glow = !!(c.glow && c.glow.includes(st));
       o.material.emissive = new THREE.Color(glow ? col : '#000000'); o.material.emissiveIntensity = glow ? 0.3 : 0;
       o.userData.e0 = [o.material.emissive.clone(), o.material.emissiveIntensity];
       if (glow && c.pulse) this._pulse.push(o.material);
@@ -182,6 +210,7 @@ export class EcodashView3D {
     for (const f of this._flows) { f.active = (f.states || []).includes(this._st(f.key, f.object)); f.mesh.visible = f.active; }
     this._renderLcd();
     this._renderAlpha();
+    this._renderMeters();
     this._renderHeating();
     this._renderChart();
     this._applyHighlight();
@@ -236,6 +265,59 @@ export class EcodashView3D {
     this._lcd = this._screenTex(sc.lcd, 1296, 904);
     this._alpha = {};
     for (const [k, obj] of Object.entries(sc.alpha || {})) this._alpha[k] = this._screenTex(obj, 288, 168);
+    this._meters = {};
+    for (const [k, obj] of Object.entries(sc.meters || {})) { const t = this._screenTex(obj, 640, 1060); if (t) { t.mat = this._objs[obj].material; this._meters[k] = t; } }
+  }
+  // HomeWizard-scherm: twee varianten (pulslampje aan en uit), het lampje knippert in de animatielus
+  _renderMeters() {
+    const M = (this.V && this.V.meters) || {}, dark = this.o.dark;
+    for (const [k, t] of Object.entries(this._meters || {})) {
+      const m = M[k]; if (!m) continue;
+      const sig = JSON.stringify([m, dark]);
+      t.period = m.w > 1 ? Math.min(60, Math.max(0.4, 3600 / m.w)) : 0;
+      if (t.sig === sig) continue; t.sig = sig;
+      const imgs = [false, true].map((led) => { const im = new Image(); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(meterSvg(m, dark, led)); return im; });
+      Promise.all(imgs.map((im) => im.decode().catch(() => {}))).then(() => { if (t.sig !== sig) return; t.imgs = imgs; t.shown = null; this._drawMeter(t); });
+    }
+  }
+  _drawMeter(t, now = performance.now() / 1000) {
+    if (!t.imgs) return;
+    const on = t.period > 0 && (now % t.period) < 0.14;
+    if (t.shown === on) return; t.shown = on;
+    t.ctx.clearRect(0, 0, t.c.width, t.c.height); t.ctx.drawImage(t.imgs[on ? 1 : 0], 0, 0, t.c.width, t.c.height); t.tex.needsUpdate = true;
+  }
+
+  /* ------------------------------------------------------------ thema */
+  _applyTheme() {
+    const dark = this.o.dark;
+    this._scene.background = new THREE.Color(dark ? (this._X.background || '#161616') : LIGHT_BG);
+    for (const [name, o] of Object.entries(this._objs)) {
+      const c = dark ? DARK_OBJ[name] : LIGHT_OBJ[name];
+      if (c) o.material.color.set(c); else if (o.userData.c0 && (name in LIGHT_OBJ || name in DARK_OBJ)) o.material.color.copy(o.userData.c0);
+    }
+    const lab = this._objs.labels;
+    if (lab) {
+      if (dark) this._setLabels(this._labelsDark);
+      else if (this._labelsLight) this._setLabels(this._labelsLight);
+      else if (this.o.labelsLight) new THREE.TextureLoader().load(this.o.labelsLight, (tx) => {
+        tx.flipY = false; tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = 8;
+        if (this._labelsDark) { tx.wrapS = this._labelsDark.wrapS; tx.wrapT = this._labelsDark.wrapT; }
+        this._labelsLight = tx; if (!this.o.dark) this._setLabels(tx);
+      });
+    }
+    for (const f of this._flows || []) this._flowColor(f);
+    if (this._bloom) this._bloom.strength = Math.min(3, this.o.glow) * 0.55 * (dark ? 1 : 0.45);
+    for (const t of Object.values(this._meters || {})) t.sig = null;
+    this._chartSig = null;
+    this._requestFrame();
+  }
+  _setLabels(tx) { const m = this._objs.labels.material; if (tx && m.map !== tx) { m.map = tx; m.needsUpdate = true; this._requestFrame(); } }
+  _flowColor(f) {   // donker: lichter en gloeiend; licht: verzadigd, zodat de blokjes op de lichte achtergrond zichtbaar blijven
+    const dark = this.o.dark;
+    if (f.gradient) {
+      f._cs = f.gradient.map((c) => (dark ? new THREE.Color(c).lerp(new THREE.Color('#ffffff'), 0.25) : new THREE.Color(c).multiplyScalar(0.9)));
+      if (!f.active) for (let i = 0; i < f.count; i++) f.mesh.setColorAt(i, f._cs[0]);
+    } else f.mesh.material.color.set(dark ? new THREE.Color(f.color).lerp(new THREE.Color('#ffffff'), 0.3) : new THREE.Color(f.color).multiplyScalar(0.85));
   }
   _renderLcd(clock) {
     const x = this.V && this.V.lcd; if (!this._lcd || !x) return;
@@ -297,7 +379,7 @@ export class EcodashView3D {
   _renderChart() {
     const C = this._X && this._X.chart, ch = this.V && this.V.chart; if (!C || !ch || !ch.curve) return;
     const { curve, t, thw1, curveOn } = ch;
-    const sig = JSON.stringify([curve.pts, t, thw1, curveOn]);
+    const sig = JSON.stringify([curve.pts, t, thw1, curveOn, this.o.dark]);
     if (sig === this._chartSig) return; this._chartSig = sig;
     if (this._chart) { this._scene.remove(this._chart); this._chart.traverse((o) => { o.geometry && o.geometry.dispose(); }); }
     const g = this._chart = new THREE.Group(); this._scene.add(g);
@@ -311,7 +393,7 @@ export class EcodashView3D {
       new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: curveOn ? 0.35 : 0, roughness: 0.4 })));
     const ball = (p, r, c, glow) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12),
       new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: glow, roughness: 0.3 })); m.position.copy(p); g.add(m); };
-    for (const [a, b] of curve.pts) ball(P(a, b), 2.6, '#f3f4f6', 0.1);
+    for (const [a, b] of curve.pts) ball(P(a, b), 2.6, this.o.dark ? '#f3f4f6' : '#5b6865', 0.1);
     if (t != null) {
       const f = curveAt(curve, t);
       ball(P(t, f), 4.2, '#22c55e', 0.6);                                  // groen: aanvoer volgens de lijn
@@ -342,11 +424,12 @@ export class EcodashView3D {
   /* ------------------------------------------------------------ gloed */
   _setupBloom() {
     const g = Math.max(0, Number(this.o.glow) || 0);
-    if (g <= 0) { this._composer = null; return; }
+    if (g <= 0) { this._composer = null; this._bloom = null; return; }
     const r = this._renderer, size = r.getSize(new THREE.Vector2());
     const bc = new EffectComposer(r); bc.renderToScreen = false;
     bc.addPass(new RenderPass(this._scene, this._camera));
-    bc.addPass(new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), Math.min(3, g) * 0.55, 0.4, 0));
+    this._bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), Math.min(3, g) * 0.55 * (this.o.dark ? 1 : 0.45), 0.4, 0);
+    bc.addPass(this._bloom);
     const fc = new EffectComposer(r);
     fc.addPass(new RenderPass(this._scene, this._camera));
     const mix = new ShaderPass(new THREE.ShaderMaterial({
@@ -394,6 +477,7 @@ export class EcodashView3D {
       this._animateFlows(t);
       if (this._sine) { const f = (this.V && this.V.freq) || 0; if (f > 0 || this._sine.lastF !== 0) this._drawSine(f, dt); this._sine.lastF = f; }
       for (const m of this._pulse || []) m.emissiveIntensity = 0.55 + 0.45 * Math.sin(t * 5);
+      for (const mt of Object.values(this._meters || {})) this._drawMeter(mt, t);
       if (this._controls.update()) this._userMoved = true;
       this._render();
       this._raf = requestAnimationFrame(tick);

@@ -47,7 +47,9 @@
           "stooklijn_middenpunt": "Stooklijn: aanpassingspunt gebruiken",
           "stooklijn_midden_buiten": "Stooklijn: buitentemperatuur aanpassingspunt",
           "stooklijn_midden_aanvoer": "Stooklijn: aanvoertemperatuur aanpassingspunt",
-          "stooklijn_verschuiving": "Stooklijn: verschuiving"
+          "stooklijn_verschuiving": "Stooklijn: verschuiving",
+          "snelheid_3d": "3D: snelheid van de stroomblokjes",
+          "gloed_3d": "3D: gloed van de stroomblokjes en lampjes"
         },
         "data_description": {
           "prefix": "Het stuk tussen het domein en de sensornaam, bijv. technische_ruimte_ecodan voor sensor.technische_ruimte_ecodan_dhw_current_temp.",
@@ -58,7 +60,9 @@
           "stooklijn_buiten_warm": "Bij deze buitentemperatuur en warmer is de aanvoer de waarde hieronder. Moet warmer zijn dan het koude punt.",
           "stooklijn_middenpunt": "Alleen als op het display een aanpassingspunt is ingesteld; het moet tussen het koude en het warme punt liggen.",
           "stooklijn_verschuiving": "Verschuiving van de hele lijn zoals op het display ingesteld (−5 tot +5 °C). Meestal 0.",
-          "instelling_woonkamer": "Neem de waarde over van het Möhlenhoff-display in die kamer; het panel kan die niet uitlezen. In het schema staat hij in het display-icoon, naast de gemeten temperatuur."
+          "instelling_woonkamer": "Neem de waarde over van het Möhlenhoff-display in die kamer; het panel kan die niet uitlezen. In het schema staat hij in het display-icoon, naast de gemeten temperatuur.",
+          "snelheid_3d": "1 = standaard, 0,3 = rustig, 0 = stil. Alleen voor de 3D-weergave.",
+          "gloed_3d": "0 = uit, 0,5 = subtiel, 1 = standaard, 3 = maximaal. Alleen voor de 3D-weergave."
         }
       }
     },

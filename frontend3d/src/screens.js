@@ -106,3 +106,36 @@ export function curveAt(curve, t) {
   for (let i = 1; i < p.length; i++) if (t <= p[i][0]) return p[i - 1][1] + (p[i][1] - p[i - 1][1]) * (t - p[i - 1][0]) / (p[i][0] - p[i - 1][0]);
   return p[p.length - 1][1];
 }
+
+/** HomeWizard kWh-meter, zoals hwSvg() in het 2D-panel: verbruik van vandaag, vermogen nu, wifi-streepjes en het
+ *  pulslampje. m = { naam, w, day, bars } (bars: 0–5, null = geen wifi-sensor); led = pulslampje aan. */
+export function meterSvg(m, dark, led) {
+  const c = dark
+    ? { body: '#2c2c2c', edge: '#8a8a8a', ink: '#e6e6e6', muted: '#9e9e9e', lcd: '#aebaa9', lcdEdge: '#6f7b6c', ok: '#3fd36a', off: '#5a5a5a' }
+    : { body: '#ffffff', edge: '#4f5a57', ink: '#1b2422', muted: '#5b6865', lcd: '#b9c4b5', lcdEdge: '#8d9a8b', ok: '#1f9d4a', off: '#a3aca9' };
+  const f = (v, d) => (v == null || !isFinite(v) ? null : Number(v).toLocaleString('nl-NL', { minimumFractionDigits: d, maximumFractionDigits: d }));
+  const day = f(m.day, 2) ?? '–,––', w = m.w == null ? '– W' : `${f(m.w, m.w < 100 ? 1 : 0)} W`;
+  const bars = [0, 1, 2, 3, 4].map((i) => `<rect x="${12 + i * 3.8}" y="${79 - (2 + i * 1.6)}" width="2.6" height="${2 + i * 1.6}"
+    fill="#1e2a20" opacity="${m.bars == null ? 0.12 : i < m.bars ? 1 : 0.15}"/>`).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 156" width="640" height="1060" preserveAspectRatio="none">
+<rect x="0.6" y="0.6" width="90.8" height="154.8" rx="5" fill="${c.body}" stroke="${c.edge}" stroke-width="1.2"/>
+<path d="M13,7 l-5,8 h3.6 l-2,7 l6.4,-9.2 h-3.8 l2.2,-5.8 z" fill="${c.ok}"/>
+<text x="20" y="18" font-family="Inter,Roboto,system-ui,sans-serif" font-size="10.5" font-weight="800" letter-spacing="-.2" fill="${c.ok}">homewizard</text>
+<rect x="7" y="25" width="78" height="59" rx="2" fill="${c.lcd}" stroke="${c.lcdEdge}" stroke-width=".6"/>
+<text x="11" y="36" font-family="Inter,Roboto,system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#1e2a20">vandaag</text>
+<text x="81" y="58" text-anchor="end" font-family="Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="500" fill="#1e2a20">${day}</text>
+<text x="81" y="67" text-anchor="end" font-family="Inter,Roboto,system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#1e2a20">kWh</text>
+${bars}
+<text x="81" y="79" text-anchor="end" font-family="Inter,Roboto,system-ui,sans-serif" font-size="9" font-weight="700" fill="#1e2a20">${w}</text>
+<text x="46" y="104" text-anchor="middle" font-family="Inter,Roboto,system-ui,sans-serif" font-size="10.5" font-weight="700" fill="${c.ink}">${m.naam}</text>
+<rect x="9" y="117" width="22" height="17" rx="2" fill="#2b2f2e" stroke="#151817" stroke-width=".8"/>
+<path d="M14.5,125 a8,8 0 0 1 11,0 M16.6,127.4 a5,5 0 0 1 6.8,0" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
+<circle cx="20" cy="130" r="1.1" fill="#fff"/>
+<rect x="35" y="117" width="22" height="17" rx="2" fill="#2b2f2e" stroke="#151817" stroke-width=".8"/>
+<path d="M41,125.5 a5,5 0 0 1 9,-3 M51,125.5 a5,5 0 0 1 -9,3 M50,119.5 v3 h-3 M42,131.5 v-3 h3" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="70" y="121" text-anchor="middle" font-family="Inter,Roboto,system-ui,sans-serif" font-size="6.5" font-weight="600" fill="${c.muted}">2 ⎍ 1</text>
+<circle cx="64" cy="127" r="2.2" fill="${c.off}" opacity=".45"/>
+<circle cx="77" cy="127" r="2.2" fill="${led ? '#e2231a' : c.off}" opacity="${led ? 1 : 0.45}"/>
+<text x="46" y="150" text-anchor="middle" font-family="Inter,Roboto,system-ui,sans-serif" font-size="6.5" font-weight="600" fill="${c.muted}">HWE-KWH1</text>
+</svg>`;
+}

@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.20.0";
+const ECODASH_VERSION = "1.21.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -1107,7 +1107,8 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .board.full .viewport{flex:1;min-height:0;touch-action:none}
 .board.full svg.schema{height:100%;aspect-ratio:auto}
 .board.full .board-foot{display:none}
-.v3d{width:100%;aspect-ratio:1200/1012;background:#161616;position:relative}
+.v3d{width:100%;aspect-ratio:1200/1012;background:#e6ebe8;position:relative}
+:host(.dark) .v3d{background:#161616}
 .v3d[hidden]{display:none}
 .v3d .v3d-canvas{display:block;width:100%!important;height:100%!important;outline:none;touch-action:none;cursor:grab}
 .v3d .v3d-msg{position:absolute;inset:0;display:grid;place-items:center;color:#9e9e9e;font-size:14px;padding:16px;text-align:center}
@@ -1962,7 +1963,8 @@ function mountDashboard(host, root) {
     const f1 = (v, d = 1) => (v == null ? "–" : fmt(v, d)), oo = b => (b == null ? "–" : b ? "aan" : "uit");
     const lo = loopsOpen(X), heating = !!X.pump1 && !X.dhw, san = X.san ? "tapwater" : "uit";
     const state = { compressor_aan: X.compRun ? "on" : "off", pomp_aan: X.pump1 ? "on" : "off", bh1_aan: X.bh1 ? "on" : "off",
-      stand: !X.pump1 ? "uit" : X.dhw ? "tapwater" : "vloer" };
+      stand: !X.pump1 ? "uit" : X.dhw ? "tapwater" : "vloer", tappen: X.hotDraw ? "on" : "off",
+      stroom_buiten: X.pOut > P_IDLE ? "on" : "off", stroom_binnen: X.pIn > P_IDLE ? "on" : "off" };
     for (const [fl, fi] of Object.entries(MFLOOR)) {
       const o = lo[fi] || [];
       state[`verdieping_${fl}`] = heating && o.some(Boolean) ? "vloer" : "uit";
@@ -1998,6 +2000,8 @@ function mountDashboard(host, root) {
     const curveOn = X.opmode == null || /curve/i.test(X.opmode);
     return {
       state, text, alpha, heat, act, leds,
+      meters: { buiten: { naam: "buitenunit", w: X.pOut, day: X.mOut, bars: X.wifiOut },
+                binnen: { naam: "binnenunit", w: X.pIn, day: X.mIn, bars: X.wifiIn } },
       obj: { buiten_ventilator: X.compRun && !X.defrost ? "on" : "off", pomp18_waaier: san, wisselaar_tapwater_secundair: san,
              pipe_tapcircuit_warm: san, pipe_tapcircuit_koud: san },
       lcd: { mode: X.mode, dhwProhibit: !!X.dhwProhibit, holiday: !!bin(R.holiday), defrost: !!X.defrost, bh1: !!(X.bh1 || X.imm),
@@ -2006,6 +2010,7 @@ function mountDashboard(host, root) {
       freq: X.compRun ? (X.freq > 0 ? X.freq : (X.pOut || 0) / 25 || 25) : 0,
     };
   }
+  const num3 = (v, d) => (v == null || v === "" || !isFinite(v) ? d : Math.max(0, +v));
   st.view = (() => { try { return localStorage.getItem("ecodash-view") === "3d" ? "3d" : "2d"; } catch (e) { return "2d"; } })();
   const here = import.meta.url, asset = f => new URL(`./${f}?v=${ECODASH_VERSION}`, here).href;
   async function load3d() {
@@ -2014,7 +2019,8 @@ function mountDashboard(host, root) {
     try {
       const { EcodashView3D } = await import(asset("ecodash-3d.js"));
       st.v3d = new EcodashView3D(v3dEl, {
-        model: asset("ecodash-3d.glb"),
+        model: asset("ecodash-3d.glb"), labelsLight: asset("ecodash-3d-labels-licht.png"),
+        dark: host.classList.contains("dark"), flowSpeed: num3(cfg.snelheid_3d, 0.3), glow: num3(cfg.gloed_3d, 1),
         onPick: (c, textKey) => {
           const k = textKey && (TEXT_ENT[textKey] || (roomAt[textKey] ? `room_${roomAt[textKey][0]}_${roomAt[textKey][1]}` : null));
           if (k && byKey[k]) showEnt(k); else if (c && C[c]) showComp(c); else clearSel();
@@ -2142,7 +2148,8 @@ function mountDashboard(host, root) {
     } catch (e) { return null; }
   };
   const applyTheme = () => { const t = storedTheme() || cfg.thema;
-    host.classList.toggle("dark", t === "dark" || (t === "auto" && !!host._hass?.themes?.darkMode)); };
+    host.classList.toggle("dark", t === "dark" || (t === "auto" && !!host._hass?.themes?.darkMode));
+    st.v3d?.setTheme(host.classList.contains("dark")); };
   $("#theme").onclick = () => {
     try { localStorage.setItem("ecodash-theme", JSON.stringify({ thema: host.classList.contains("dark") ? "light" : "dark", haDark: haDark() })); } catch (e) {}
     applyTheme(); };
