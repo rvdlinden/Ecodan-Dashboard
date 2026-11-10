@@ -103,7 +103,6 @@ export class EcodashView3D {
   }
   home() {
     if (!this._X) return;
-    this._camera.position.fromArray(this._X.camera.position); this._controls.target.fromArray(this._X.camera.target);
     this._userMoved = false; this._resize();
   }
   dispose() {
@@ -134,9 +133,10 @@ export class EcodashView3D {
     this._labelsDark = this._objs.labels?.material.map || null;
     this._initScreens();
     this._buildSine();
-    this._camera.position.fromArray(X.camera.position);
-    this._controls.target.fromArray(X.camera.target);
-    this._homeDist = this._camera.position.distanceTo(this._controls.target);
+    // beginstand: recht van voren en zo dicht dat het hele model de breedte (of de hoogte) vult, zoals het 2D-schema
+    this._box = new THREE.Box3().setFromObject(gltf.scene);
+    this._controls.addEventListener('start', () => { this._userMoved = true; });
+    this._fit();
     this._buildFlows();
     this._setupBloom();
     // uitgangskleur per object, zodat markeren en weer loslaten de juiste kleur terugzet
@@ -457,13 +457,18 @@ export class EcodashView3D {
     this._renderer.setSize(w, h, false);
     if (this._composer) { this._composer.setSize(w, h); this._bloomComposer.setSize(w, h); }
     this._camera.aspect = w / h;
-    if (this._homeDist && !this._userMoved) {          // smal scherm: verder uitzoomen zodat alles past
-      const k = Math.max(1, 1.45 / this._camera.aspect);
-      const dir = this._camera.position.clone().sub(this._controls.target).normalize();
-      this._camera.position.copy(this._controls.target).addScaledVector(dir, this._homeDist * k);
-    }
+    if (this._box && !this._userMoved) this._fit();
     this._camera.updateProjectionMatrix();
     this._requestFrame();
+  }
+  _fit() {
+    const b = this._box, c = b.getCenter(new THREE.Vector3()), sz = b.getSize(new THREE.Vector3()), cam = this._camera;
+    const tv = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2), th = tv * cam.aspect;
+    // afstand tot het vlak z = 0; de voorkant van het model (max.z) staat dichterbij, dus die afstand komt erbij
+    const d = Math.max(sz.x / 2 / th, sz.y / 2 / tv) * 1.01 + b.max.z;
+    this._controls.target.set(c.x, c.y, 0);
+    cam.position.set(c.x, c.y, d);
+    cam.updateProjectionMatrix(); this._controls.update(); this._requestFrame();
   }
   _requestFrame() { if (!this._raf) this._loop(); }
   _loop() {
@@ -478,7 +483,7 @@ export class EcodashView3D {
       if (this._sine) { const f = (this.V && this.V.freq) || 0; if (f > 0 || this._sine.lastF !== 0) this._drawSine(f, dt); this._sine.lastF = f; }
       for (const m of this._pulse || []) m.emissiveIntensity = 0.55 + 0.45 * Math.sin(t * 5);
       for (const mt of Object.values(this._meters || {})) this._drawMeter(mt, t);
-      if (this._controls.update()) this._userMoved = true;
+      this._controls.update();
       this._render();
       this._raf = requestAnimationFrame(tick);
     };
