@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.18.0";
+const ECODASH_VERSION = "1.19.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -93,16 +93,18 @@ const ENT = {
 const CORE_KEYS = ["buiten", "freq", "aanvoer", "retour", "tank", "flow", "opstate"];
 // Per kamer de slimme temperatuurmeter die naast de (domme) thermostaat hangt. Per verdieping de lussen op de
 // verdeler: met hoofdactuator zit er één aandrijving op de aanvoer en gaan alle lussen samen open of dicht,
-// anders heeft elke lus een eigen aandrijving tenzij actuator: false (dan alleen een handwiel).
+// anders heeft elke lus een eigen aandrijving tenzij actuator: false (dan alleen een handwiel). Met handmatig: true staat
+// de aandrijving op handbediening en altijd open (de badkamer).
 const DEFAULT_FLOORS = [
   { naam: "2E VERDIEPING", hoofdactuator: true, lussen: 3,
     kamers: [{ naam: "Slaapkamer 4", entity: "sensor.kantoor_kantoor_thermo_hygro_co2_temperatuur" }] },
-  { naam: "1E VERDIEPING", lussen: [{ naam: "Overloop", actuator: false }, { naam: "Badkamer", via: "Slaapkamer 1" },
+  { naam: "1E VERDIEPING", lussen: [{ naam: "Overloop", actuator: false }, { naam: "Badkamer", via: "Slaapkamer 1", handmatig: true },
     "Slaapkamer 1", "Slaapkamer 2", "Slaapkamer 3"], kamers: [
     { naam: "Slaapkamer 1", entity: "sensor.slaapkamer_slaapkamer_thermo_hygro_co2_temperatuur" },
     { naam: "Slaapkamer 2", entity: "sensor.kinderkamer_kinderkamer_thermo_hygro_co2_temperatuur" },
     { naam: "Slaapkamer 3", entity: "sensor.hobbykamer_thermo_hygro_temperature" }] },
-  { naam: "BEGANE GROND", hoofdactuator: true, lussen: 5, kamers: [{ naam: "Woonkamer", entity: "sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur" }] },
+  // begane grond: de aandrijving is losgekoppeld van de verdeler, alle lussen staan altijd open
+  { naam: "BEGANE GROND", lussen: [1, 2, 3, 4, 5].map(() => ({ actuator: false })), kamers: [{ naam: "Woonkamer", entity: "sensor.woonkamer_woonkamer_thermo_hygro_co2_temperatuur" }] },
 ];
 // Lampjes van de zones op het Möhlenhoff-basisstation, van links naar rechts: label en de kamerthermostaat die de zone stuurt.
 // Override "kanalen": [{naam, kamer}, ...].
@@ -118,7 +120,7 @@ const ROOM_HYST = 0.2;        // °C
 const M_ON_W = 2;             // W
 // Melding "geen warmtevraag": een kamer staat minstens NODEMAND_DIFF onder de ingestelde waarde en IN1 staat uit, en
 // dat allebei al NODEMAND_MIN lang. Dan komt de vraag van de thermostaat niet bij de FTC6 aan (bijv. een vastgelopen
-// Alpha-basisstation).
+// Möhlenhoff-basisstation).
 const NODEMAND_DIFF = 0.4;    // °C
 const NODEMAND_MIN = 30;      // minuten
 const P_IDLE = 30;            // W: daaronder is een groep in stand-by (regelaar, wifi)
@@ -212,9 +214,9 @@ function resolveEntities(hass, cfg) {
   // optioneel: tapwaterdebiet en warmtevraag
   r.tap = pick(ov.tapwater_debiet) || (has("sensor.meterkast_watermeter_water_gebruik") ? "sensor.meterkast_watermeter_water_gebruik"
     : ids.find(id => id.startsWith("sensor.") && id.includes("watermeter") && /_(water_gebruik|active_water_usage)$/.test(id)) || null);
-  // warmtevraag van het Möhlenhoff-basisstation van de vloerverwarming op ingang IN1 van de FTC6
   // vermogen van het stopcontact waar alleen het Möhlenhoff-basisstation in zit (override "mohlenhoff_vermogen")
   r.mpower = pick(ov.mohlenhoff_vermogen) || (has("sensor.hobbykamer_hobbykamer_wcd_koof_vermogen") ? "sensor.hobbykamer_hobbykamer_wcd_koof_vermogen" : null);
+  // warmtevraag van het Möhlenhoff-basisstation van de vloerverwarming op ingang IN1 van de FTC6
   r.vraag = pick(ov.warmtevraag) || find("binary_sensor", ["in1_thermostat"]);
 
   // verdiepingen en kamers; thermostaten worden gezocht op kamernaam (climate.woonkamer of naam "Woonkamer")
@@ -261,7 +263,7 @@ function loopsOf(f) {
   const list = Array.isArray(l) && l.length ? l : Array.from({ length: clamp(Math.round(+l) || 5, 1, 8) }, () => ({}));
   return { main, loops: list.slice(0, 8).map(x => {
     const o = typeof x === "object" && x ? x : { naam: x };
-    return { naam: String(o.naam || o.name || ""), via: String(o.via || ""), act: !!(o.actuator ?? !main) };
+    return { naam: String(o.naam || o.name || ""), via: String(o.via || ""), act: !!(o.actuator ?? !main), hand: !!(o.handmatig ?? o.manual) };
   }) };
 }
 
@@ -382,7 +384,7 @@ function floorsSvg(floors) {
         + `<path d="M896,${y - 4} H1012 a4,4 0 0 1 0,8" fill="none" stroke="url(#loopOut)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
         + `<path d="M1012,${y + 4} H896" fill="none" stroke="url(#loopBack)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
         + `<path class="fl f-heat thin" d="${d}"/></g>`;
-      if (l.naam && step >= 20) s += `<text class="t loop" x="902" y="${y - 8}">${esc(l.naam.toLowerCase())}${l.via ? ` (via ${esc(l.via.toLowerCase())})` : ""}</text>`;
+      if (l.naam && step >= 20) s += `<text class="t loop" x="902" y="${y - 8}">${esc(l.naam.toLowerCase())}${l.hand ? " (hand: open)" : l.via ? ` (via ${esc(l.via.toLowerCase())})` : ""}</text>`;
     });
     // lus zonder aandrijving: alleen het handwiel op de verdeler; er loopt eventueel een stuurdraad achterlangs
     // stuurdraad van het basisstation (verzamelleiding op x1076) naar de aandrijving(en)
@@ -846,9 +848,9 @@ const C = {
   thw5: { name: "Tankvoelers THW5A (26) en THW5B (27)", where: "THW5A bovenin, THW5B onderin het vat", text: "THW5B zit onderin en is de voeler waarop de FTC6 regelt (DHW Current Temp). Zakt die onder de ingestelde waarde min de toegestane daling (DHW Max Temp Drop), dan schakelt de warmtepomp naar tapwater. THW5A zit bovenin (DHW Secondary Temp) en laat zien hoe warm het water is dat naar de kranen gaat; boven is het vat warmer dan onder. Tap je warm water, dan stroomt er onderin koud leidingwater bij en zakt THW5B snel; daaraan herkent het panel dat het water via het vat loopt. Geeft THW5A vast 25,0 °C, dan is er geen bovenste voeler aangesloten." },
   cyl: { name: "Cilinderunit EHST20D-VM2D", where: "Technische ruimte", text: "Alles-in-één binnenunit: platenwisselaar, pomp, 3-wegklep, 2 kW booster heater, expansievat, regelaar en een 200 L tapwatervat in één kast. 'VM2' = 1-fase, 2 kW booster heater. De H in EHST staat voor alleen verwarmen: deze unit kan niet koelen." },
   manifold: { name: "Vloerverwarmingsverdelers", where: "Eén per verdieping", text: "Verdelen het warme water over de lussen van een verdieping: 5 op de begane grond, 5 op de 1e en 3 op de 2e verdieping. Elke lus is een slang die door één kamer (of een deel ervan) in de dekvloer loopt en afgekoeld terugkomt." },
-  act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' die een lus open of dicht zetten, aangestuurd door de thermostaat via het Möhlenhoff-basisstation. Op de begane grond en de 2e verdieping zit er één op de hoofdaanvoer van de verdeler: de thermostaat zet daar alle lussen tegelijk open of dicht. Op de 1e verdieping heeft elke slaapkamer een eigen aandrijving; die van de badkamer volgt de thermostaat van slaapkamer 1. De lus naar de overloop heeft geen aandrijving en staat altijd open. Lussen zonder aandrijving hebben alleen een handwiel (het rondje op de verdeler). De aandrijvingen zijn niet uit te lezen: het panel neemt aan dat een kraan open staat zodra de kamer 0,2 °C onder de ingestelde waarde zakt en weer dicht gaat 0,2 °C erboven. Een open kraan krijgt een rode rand en alleen door open lussen lopen bolletjes als de vloerverwarming draait." },
+  act: { name: "Ventielaandrijvingen (kranen)", where: "Op de verdelers", text: "Kleine elektrische 'knoppen' die een lus open of dicht zetten, aangestuurd door de thermostaat via het Möhlenhoff-basisstation. Op de 2e verdieping zit er één op de hoofdaanvoer van de verdeler: de thermostaat zet daar alle lussen tegelijk open of dicht. Op de begane grond is de aandrijving van de verdeler gehaald (dit type heeft geen handbediening): alle lussen staan altijd open. De aandrijving hangt nog wel aan het basisstation. Op de 1e verdieping heeft elke slaapkamer een eigen aandrijving. Die van de badkamer staat op handbediening en altijd open; de thermostaat van slaapkamer 1 stuurt hem nog wel aan, maar zonder effect. De lus naar de overloop heeft geen aandrijving en staat altijd open. Lussen zonder aandrijving hebben alleen een handwiel (het rondje op de verdeler). De aandrijvingen zijn niet uit te lezen: het panel neemt aan dat een kraan open staat zodra de kamer 0,2 °C onder de ingestelde waarde zakt en weer dicht gaat 0,2 °C erboven. Een open kraan krijgt een rode rand en alleen door open lussen lopen bolletjes als de vloerverwarming draait." },
   tstat: { name: "Thermostaten (Möhlenhoff)", where: "In de kamers", text: "Elke kamer heeft een bedrade Möhlenhoff-thermostaat. Ze zijn allemaal aangesloten op het centrale Möhlenhoff-basisstation (de stippellijn naar onderen); dat zet de aandrijvingen op de verdelers open of dicht en schakelt IN1 van de FTC6. In het display-icoon staat de ingestelde temperatuur uit Configureren, ernaast de gemeten temperatuur. De thermostaten zelf zijn niet slim; de temperatuur bij elke kamer komt van de slimme temperatuurmeter die ernaast hangt. Of een thermostaat warmte vraagt, schat het panel uit gemeten tegen ingesteld: 0,2 °C eronder gaat de kraan open en kleurt het display-icoon rood, 0,2 °C erboven gaat hij weer dicht." },
-  mohlenhoff: { name: "Möhlenhoff-basisstation", where: "Centraal, alle thermostaten komen hier samen", text: "Het basisstation waarop alle kamerthermostaten (woonkamer en slaapkamer 1 tot en met 4) en de aandrijvingen op de verdelers bedraad zijn. Vraagt een of meer thermostaten warmte, dan zet het de aandrijving(en) van die zone open en sluit het contact naar IN1 van de FTC6 (de stippellijn langs de rechterkant naar de FTC6, groen zolang IN1 aan staat): de warmtepomp gaat dan verwarmen. Lampjes van links naar rechts: IN1 (warmtevraag naar de FTC6, gelezen via de Asgard), aan, en per zone (badkamer, slaapkamer 1, 2, 3, 2e verdieping, begane grond) of die zone warmte vraagt. De zonelampjes zijn een schatting uit gemeten tegen ingesteld; het basisstation zelf is niet uit te lezen. Het lampje 'aan' volgt het stopcontact waar alleen het basisstation in zit (sensor.hobbykamer_hobbykamer_wcd_koof_vermogen): het basisstation gebruikt in bedrijf ± 5 W (± 10 W als er aandrijvingen open staan); onder 2 W gaat het lampje uit en volgt een melding. Brandt een zonelampje lang terwijl IN1 uit blijft, dan is het basisstation mogelijk vastgelopen (een herstart hielp eerder)." },
+  mohlenhoff: { name: "Möhlenhoff-basisstation", where: "Centraal, alle thermostaten komen hier samen", text: "Het basisstation waarop alle kamerthermostaten (woonkamer en slaapkamer 1 tot en met 4) en de aandrijvingen op de verdelers bedraad zijn. Vraagt een of meer thermostaten warmte, dan zet het de aandrijving(en) van die zone open en sluit het contact naar IN1 van de FTC6 (de stippellijn langs de rechterkant naar de FTC6, groen zolang IN1 aan staat): de warmtepomp gaat dan verwarmen. Lampjes van links naar rechts: IN1 (warmtevraag naar de FTC6, gelezen via de Asgard), aan, en per zone (badkamer, slaapkamer 1, 2, 3, 2e verdieping, begane grond) of die zone warmte vraagt. De zonelampjes zijn een schatting uit gemeten tegen ingesteld; het basisstation zelf is niet uit te lezen. De zones badkamer en begane grond hebben geen effect meer op de lussen (badkamer op handbediening open, de aandrijving van de begane grond is van de verdeler gehaald), maar hun thermostaten tellen wel mee voor de warmtevraag op IN1. Het lampje 'aan' volgt het stopcontact waar alleen het basisstation in zit (sensor.hobbykamer_hobbykamer_wcd_koof_vermogen): het basisstation gebruikt in bedrijf ± 5 W (± 10 W als er aandrijvingen open staan); onder 2 W gaat het lampje uit en volgt een melding. Brandt een zonelampje lang terwijl IN1 uit blijft, dan is het basisstation mogelijk vastgelopen (een herstart hielp eerder)." },
   unused: { name: "Niet aangesloten", where: "—", text: "De FTC6 ondersteunt een mengklep met eigen zonevoelers, een mengvat met extra zonepomp en een dompelaar. Bij jou is dat niet aangesloten. De entiteiten bestaan omdat de Asgard ze altijd aanmaakt. Voelers zonder sensor geven een vaste 25,0 °C. Water Pump 2 Status kan tijdens ruimteverwarming 'aan' melden: dan schakelt alleen de uitgang OUT2, er hangt geen pomp aan." },
   curve: { name: "Stooklijn (compensatiecurve)", where: "Instelling in de FTC6", text: "Met de regeling op Heat Compensation Curve bepaalt de FTC6 de aanvoertemperatuur uit de buitentemperatuur (TH7): hoe kouder buiten, hoe warmer het water naar de vloeren. Tot en met het koude punt geldt de hoogste aanvoer, vanaf het warme punt de laagste, en daartussen loopt de lijn recht (via het aanpassingspunt als dat is ingesteld). De groene stip is de huidige buitentemperatuur op de lijn: de aanvoer waar de FTC6 volgens de ingestelde punten op mikt. De Asgard meldt ook het aanvoerdoel dat de FTC6 zelf berekent (Zone 1 Setpoint Value); dat staat erbij en hoort gelijk te zijn aan de lijn. De rode stip is de werkelijke aanvoer (THW1) zodra de vloerverwarming draait. De punten zelf geeft de FTC6 niet door; ze komen uit Configureren. Pas ze daar aan als je de stooklijn op het Ecodan-display verandert." },
   zone1: { name: "Zone 1: de vloerverwarming", where: "Alle verdiepingen samen", text: "Voor de FTC6 is je hele vloerverwarming één zone. De Asgard meldt het aanvoerdoel van die zone (Zone 1 Setpoint Value) en de kamertemperatuur zoals de FTC6 die kent (Zone 1 Room Temp, van de voeler in het bedieningspaneel in de technische ruimte). Bij regeling op de stooklijn speelt die kamertemperatuur geen rol." },
@@ -1425,7 +1427,7 @@ function mountDashboard(host, root) {
   const loopsOpen = X => R.floors.map((f, fi) => {
     const roomOpen = j => X.rooms[fi]?.[j]?.heat ?? true;
     const main = !f.main || !f.kamers.length || f.kamers.some((_, j) => roomOpen(j));
-    return f.loops.map(l => main && (!l.act || f.main || l.ctl == null || roomOpen(l.ctl)));
+    return f.loops.map(l => main && (!l.act || l.hand || f.main || l.ctl == null || roomOpen(l.ctl)));
   });
 
   // houdt per entiteit de waarden van het laatste venster bij (plus één punt ervoor als beginstand)
@@ -1815,7 +1817,7 @@ function mountDashboard(host, root) {
       const n = X.noDemand, lang = duur((Date.now() - Math.min(...n.map(x => x.from))) / 1000);
       b.push(["warn", `<b>Geen warmtevraag, terwijl ${n.length > 1 ? `${n.length} kamers al ${lang} te koud zijn` : `${esc(n[0].naam.toLowerCase())} al ${lang} te koud is`}.</b> `
         + n.map(x => `${esc(x.naam)} ${fmt(x.t, 1)} °C, ingesteld ${fmt(x.sp, 1)} °C`).join(" · ")
-        + `. IN1 staat sinds ${new Date(X.in1OffSince).toDateString() === new Date().toDateString() ? hhmm(X.in1OffSince) : dagTijd(X.in1OffSince)} uit, dus de warmtepomp krijgt geen vraag. Controleer de thermostaat en het Alpha-basisstation; een herstart van het basisstation (stekker eruit en weer erin) hielp eerder.`]);
+        + `. IN1 staat sinds ${new Date(X.in1OffSince).toDateString() === new Date().toDateString() ? hhmm(X.in1OffSince) : dagTijd(X.in1OffSince)} uit, dus de warmtepomp krijgt geen vraag. Controleer de thermostaat en het Möhlenhoff-basisstation; een herstart van het basisstation (stekker eruit en weer erin) hielp eerder.`]);
     }
     if (X.faultOn) b.push(["bad", `<b>Storing op de Ecodan: ${esc(X.fault)}.</b> Zie het bedieningspaneel of de servicehandleiding voor de betekenis van de code.`]);
     if (X.refErrOn) b.push(["bad", `<b>Koudemiddelcircuit meldt: ${esc(X.refErr)}.</b>`]);
@@ -1838,7 +1840,7 @@ function mountDashboard(host, root) {
     if (X.mode === "rust" && X.power === false) li.push(`<b>De warmtepomp staat in stand-by (uit).</b> Er wordt niet verwarmd en geen tapwater gemaakt.`);
     else if (X.mode === "rust") li.push(`<b>De installatie staat in rust.</b> Compressor ${hz}, pomp 1 uit${X.bh1 ? "" : ", geen elektrische bijverwarming"}.`);
     else if (X.mode === "verwarming") li.push(`<b>Ruimteverwarming.</b> Compressor ${hz}, aanvoer ${deg(X.aanvoer)}, retour ${deg(X.retour)}${X.dT != null ? `, ΔT ${fmt(X.dT, 1)} °C` : ""}${X.flow != null ? `, ${fmt(X.flow, 1)} L/min` : ""}. Het water gaat naar de verdelers.`);
-    else li.push(`<b>Tapwater wordt opgewarmd.</b> Vat ${deg(X.tank)}${X.target != null ? `, doel ${fmt(X.target, 0)} °C` : ""}; aanvoer ${deg(X.aanvoer)}. De vloeren krijgen nu geen warmte: tapwater gaat voor.${X.bh1 ? " De booster heater helpt mee." : ""}`);
+    else li.push(`<b>Tapwater wordt opgewarmd.</b> Vat ${deg(X.tank)}${X.mode === "legionella" && X.leg_temp != null ? `, doel ${fmt(X.leg_temp, 0)} °C (legionella)` : X.target != null ? `, doel ${fmt(X.target, 0)} °C` : ""}; aanvoer ${deg(X.aanvoer)}. De vloeren krijgen nu geen warmte: tapwater gaat voor.${X.bh1 ? " De booster heater helpt mee." : ""}`);
     if (X.curveTarget != null && (X.opmode == null || /curve/i.test(X.opmode)))
       li.push(`<b>Stooklijn:</b> bij ${deg(X.buiten)} buiten hoort een aanvoer van ${deg(X.curveTarget)}${X.z1sp != null ? ` (de FTC6 mikt op ${deg(X.z1sp)})` : ""}${X.mode === "verwarming" && X.aanvoer != null ? `; nu ${deg(X.aanvoer)}` : ""}.`);
     if (X.heatNow > 0 && X.compRun) li.push(`<b>Warmte nu: ${fmt(X.heatNow / 1000, 2)} kW</b>${X.copNow != null ? ` bij ${fmt((X.pOut || 0) + (X.pIn || 0), 0)} W stroom: COP ${fmt(X.copNow, 1)}` : ""}.`);
@@ -1865,7 +1867,7 @@ function mountDashboard(host, root) {
     else if (X.tapFlow > 0) li.push(`De watermeter meet ${fmt(X.tapFlow, 1)} ${esc(unitOf("tap"))}, maar het vat koelt niet af: waarschijnlijk toilet of een koude kraan, dus niet via de Ecodan.`);
     if (X.tank != null && X.target != null && X.mode !== "tapwater" && X.mode !== "legionella") {
       const d = X.target - X.tank;
-      li.push(d <= 0 ? `<b>Het vat is op temperatuur</b> (${deg(X.tank)}).` : `<b>Vat ${deg(X.tank)}</b>, ${fmt(d, 1)} °C onder het doel. ${d <= 8 ? "Binnen de marge (hysterese), dus de warmtepomp start nog niet." : "Tapwater-opwarming volgt binnenkort."}`);
+      li.push(d <= 0 ? `<b>Het vat is op temperatuur</b> (${deg(X.tank)}).` : `<b>Vat ${deg(X.tank)}</b>, ${fmt(d, 1)} °C onder het doel. ${d <= X.hyst ? `Binnen de toegestane daling van ${fmt(X.hyst, 0)} °C, dus de warmtepomp start nog niet.` : "Tapwater-opwarming volgt binnenkort."}`);
     }
     const dag = X.dailyFresh || X.dailySince == null ? "vandaag" : `(dagwaarde van de FTC6 van ${dagTijd(X.dailySince)})`;
     if (X.dhw_prod != null) li.push(`<b>Tapwater ${dag}:</b> ${fmt(X.dhw_cons, 2)} kWh stroom in, ${fmt(X.dhw_prod, 2)} kWh warmte uit${X.dhw_cop ? `: COP ${fmt(X.dhw_cop, 2)}` : R.dhw_cop ? "" : X.dhw_cons > 0.2 ? `: COP ${fmt(X.dhw_prod / X.dhw_cons, 2)}` : ""}.`);

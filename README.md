@@ -96,7 +96,7 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
   (*Fault code*) of een koudemiddelfout, als de Asgard onbereikbaar is of al lang geen nieuwe
   waarden stuurt, en als er **geen warmtevraag** is terwijl een kamer al 30 minuten minstens 0,4 °C
   onder de ingestelde waarde zit en IN1 al 30 minuten uit staat. Dan komt de vraag van de thermostaat
-  niet bij de FTC6 aan, bijvoorbeeld doordat het Alpha-basisstation is vastgelopen.
+  niet bij de FTC6 aan, bijvoorbeeld doordat het Möhlenhoff-basisstation is vastgelopen.
 - **Alleen lezen:** het panel bedient niets. De regeling en het tapwater wijzig je dus niet
   per ongeluk vanaf het dashboard.
 - **Licht en donker thema.** Beide thema's hebben dezelfde matte opbouw, lettertypes en maten. Het
@@ -251,9 +251,9 @@ ernaast. In de lijst *Kamertemperaturen* en in *Wat gebeurt er nu?* zie je beide
 Of de kraan van een kamer open staat is niet uit te lezen; het panel schat het net als een
 thermostaat met hysterese: 0,2 °C onder de ingestelde waarde gaat de kraan open (de kamer vraagt
 warmte), 0,2 °C erboven gaat hij weer dicht en daartussen blijft de vorige stand staan. Bij een
-climate-entiteit geldt `hvac_action: heating`. Op de begane grond en de 2e verdieping gaan alle
-lussen samen open of dicht, op de 1e verdieping per kamer; de badkamer volgt slaapkamer 1 en de
-overloop stroomt altijd mee. Zonder meting of ingestelde waarde telt een kraan als open. Met de override `verdiepingen` kan een kamer ook een eigen
+climate-entiteit geldt `hvac_action: heating`. Op de 2e verdieping gaan alle lussen samen open of
+dicht, op de 1e verdieping per kamer. De badkamer staat op handbediening open en de overloop
+stroomt altijd mee. Op de begane grond staan alle lussen altijd open. Zonder meting of ingestelde waarde telt een kraan als open. Met de override `verdiepingen` kan een kamer ook een eigen
 `instelling` krijgen, bijv. `{naam: Woonkamer, entity: sensor.x, instelling: 21}`.
 
 Bestaat zo'n sensor niet, dan zoekt het panel een climate-entiteit op kamernaam
@@ -267,13 +267,14 @@ Het schema tekent per verdieping de lussen op de verdeler en waar de aandrijving
 | Verdieping | Lussen | Aandrijving |
 |---|---|---|
 | 2e verdieping | 3 | Eén op de hoofdaanvoer: alle lussen in slaapkamer 4 gaan samen open of dicht |
-| 1e verdieping | 5 | Eigen aandrijving voor badkamer en slaapkamer 1, 2 en 3; de badkamer volgt de thermostaat van slaapkamer 1. De overloop heeft geen aandrijving |
-| Begane grond | 5 | Eén op de hoofdaanvoer: de woonkamerthermostaat zet de hele begane grond open of dicht |
+| 1e verdieping | 5 | Eigen aandrijving voor badkamer en slaapkamer 1, 2 en 3. Die van de badkamer staat op handbediening en altijd open (slaapkamer 1 stuurt hem zonder effect). De overloop heeft geen aandrijving |
+| Begane grond | 5 | Geen: de aandrijving is van de verdeler gehaald (dit type heeft geen handbediening) en hangt alleen nog aan het basisstation; alle lussen staan altijd open. De woonkamerthermostaat telt wel mee voor de warmtevraag |
 
 Een lus zonder eigen aandrijving staat in het schema met een rond handwiel op de verdeler. Met de
 override `verdiepingen` geef je per verdieping `hoofdactuator: true` (één aandrijving op de aanvoer)
 en `lussen`: een aantal of een lijst van namen of `{naam, actuator, via}`. Zonder `hoofdactuator`
-heeft elke lus een eigen aandrijving, tenzij `actuator: false`. Zonder `lussen` tekent het panel 5
+heeft elke lus een eigen aandrijving, tenzij `actuator: false`. Met `handmatig: true` staat de
+aandrijving op handbediening en altijd open. Zonder `lussen` tekent het panel 5
 lussen.
 
 ### Overrides
@@ -331,7 +332,7 @@ verdiepingen:
   - naam: 1e verdieping
     lussen:
       - {naam: Overloop, actuator: false}
-      - {naam: Badkamer, via: Slaapkamer 1}
+      - {naam: Badkamer, via: Slaapkamer 1, handmatig: true}
       - Slaapkamer 1
       - Slaapkamer 2
       - Slaapkamer 3
@@ -340,8 +341,9 @@ verdiepingen:
       - {naam: Slaapkamer 2, entity: sensor.kinderkamer_kinderkamer_thermo_hygro_co2_temperatuur}
       - Slaapkamer 3
   - naam: Begane grond
-    hoofdactuator: true
-    lussen: 5
+    lussen:
+      - {naam: Woonkamer 1, actuator: false}
+      - {naam: Woonkamer 2, actuator: false}
     kamers: [Woonkamer]
 tapwater_debiet: sensor.watermeter_actueel_waterverbruik
 ```
