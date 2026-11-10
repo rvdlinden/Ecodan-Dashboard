@@ -116,11 +116,12 @@ class Atlas:
         x, y, w, h = r; return (x + u * w, y + v * h)   # pixels; genormaliseerd na build()
 ATLAS = Atlas()
 STYLE_LBL = {"white": ("#f3f4f6", FONT_B), "grey": ("#9ca3af", FONT_R), "dark": ("#1f2937", FONT_B),
-             "red": ("#e11d48", FONT_B), "bold": ("#f3f4f6", FONT_B), "title": ("#9ca3af", FONT_B), "mono": ("#a3a3a3", FONT_M)}
+             "red": ("#e11d48", FONT_B), "bold": ("#f3f4f6", FONT_B), "title": ("#9ca3af", FONT_B), "mono": ("#a3a3a3", FONT_M),
+             "plaat": ("#f3f4f6", FONT_B), "plaatklein": ("#d1d5db", FONT_R)}
 
 # licht thema: dezelfde labels met donkere tekst (zoals --ink en --muted van het 2D-panel)
 STYLE_LBL_LIGHT = {"white": "#1b2422", "grey": "#5b6865", "dark": "#1f2937", "red": "#e11d48", "bold": "#1b2422",
-                   "title": "#5b6865", "mono": "#4b5563"}
+                   "title": "#5b6865", "mono": "#4b5563", "plaat": "#f3f4f6", "plaatklein": "#d1d5db"}
 def text_img(text, size, style, light=False):
     col, fp = STYLE_LBL[style]
     if light: col = STYLE_LBL_LIGHT[style]
@@ -388,13 +389,20 @@ def plate_with_hole(x0, x1, y0, y1, hx, hy, hr, z):
         a, b = 2 * i, 2 * ((i + 1) % n); I += [a, b, a + 1, b, b + 1, a + 1]
     return part(P, [(0, 0, 1)] * len(P), [(0, 0)] * len(P), I)
 (fx, fy), fr = L.FAN["c"], L.FAN["r"]
-S.add("buitenunit_kast", [bx(36, 252, 67, 293, -45, 37), plate_with_hole(36, 252, 67, 293, fx, fy, fr, 45),
-                          bx(36, 37, 67, 293, 37, 45), bx(251, 252, 67, 293, 37, 45), bx(36, 252, 67, 68, 37, 45), bx(36, 252, 292, 293, 37, 45)],
-      "#3d4148", metal=0.35, rough=0.45)
-S.add("buitenunit_voeten", [bx(50, 72, 293, 305, -40, 40), bx(216, 238, 293, 305, -40, 40)], "#25282c", rough=0.8)
-S.add("buitenunit_lamellen", [bx(250, 252.5, 70 + i * 9, 72 + i * 9, -42, 30) for i in range(24)], "#2a2d32", metal=0.4)
-(fx, fy), fr = L.FAN["c"], L.FAN["r"]
-S.add("buitenunit_koker", [cz(fx, fy, 30, 45, fr, 64, caps=False), cz(fx, fy, 30, 30.5, fr, 64)], "#0b0c0e", rough=1)
+S.add("buitenunit_kast", [plate_with_hole(36, 252, 67, 293, fx, fy, fr, 45),           # voorkant met ventilatorgat
+                          bx(36, 252, 67, 69.5, -45, 45), bx(36, 252, 290.5, 293, -45, 45),  # boven- en onderkant
+                          bx(36, 38.5, 67, 293, -45, 45), bx(249.5, 252, 67, 293, -45, 45)],  # zijkanten
+      "#ffffff", metal=0, rough=0.55, double=True)
+# servicepaneel rechts met drie verticale ribben en het typeplaatje, zoals op de echte unit
+S.add("buitenunit_ribben", [bx(x0, x0 + 18, 204, 289, 45, 45.9) for x0 in (180, 202, 224)], "#ffffff", metal=0, rough=0.55)
+S.add("buitenunit_logo", [bx(180, 246, 72, 91, 45, 46.2)], "#1f2124", metal=0, rough=0.6)
+S.add("buitenunit_voeten", [bx(50, 72, 293, 296, -38, 38), bx(58, 64, 293, 305, -38, 38), bx(48, 74, 303, 305, -44, 44),
+                            bx(216, 238, 293, 296, -38, 38), bx(224, 230, 293, 305, -38, 38), bx(214, 240, 303, 305, -44, 44)],
+      "#a6acb2", metal=0.6, rough=0.4)
+# ventilatierooster aan de linkerkant en de verdamper (lamellen) achterin: door het ventilatorgat zie je er doorheen
+S.add("buitenunit_lamellen", [bx(33.5, 36, 72 + i * 9, 74.5 + i * 9, -42, 40) for i in range(24)], "#e3e8e5", metal=0, rough=0.6)
+S.add("buitenunit_verdamper", [bx(40 + i * 3.4, 40.7 + i * 3.4, 70, 290, -43, -40) for i in range(61)], "#a9b0b6", metal=0.5, rough=0.4)
+S.add("buitenunit_koker", [cz(fx, fy, 34, 45, fr, 64, caps=False)], "#111214", rough=0.9, double=True)
 fan = [cyl((0, 0, 0), (0, 0, 3), 8, 20)]
 def blade_local(poly, z0, z1):
     poly = np.array(poly, float); n = len(poly); c = poly.mean(0); out = []
@@ -407,16 +415,15 @@ def blade_local(poly, z0, z1):
         out.append(part([(a[0], a[1], z0), (b[0], b[1], z0), (b[0], b[1], z1), (a[0], a[1], z1)], [nr] * 4, [(0, 0)] * 4, [0, 1, 2, 0, 2, 3]))
     return out
 for k in range(3):
-    bl = blade_local([(6, -6), (fr * .45, -13), (fr - 7, -10), (fr - 5, 2), (fr * .5, 11), (6, 6)], 0.6, 2.2)
+    bl = blade_local([(6, -7), (fr * .45, -17), (fr - 6, -16), (fr - 3, 0), (fr * .5, 12), (6, 7)], 0.6, 2.2)
     fan += [rotate(p, (0, 0, 1), k * 2 * math.pi / 3) for p in bl]
-fan += tube([(0.94 * fr * math.cos(t), 0.94 * fr * math.sin(t), 1.2) for t in np.linspace(0, 2 * math.pi, 49)], 0.6, 5)
-S.add("buiten_ventilator", [shift(p, V(fx, fy, 40)) for p in fan], "#b8bcc4", metal=0.3, rough=0.4, origin=V(fx, fy, 41.2))
+S.add("buiten_ventilator", [shift(p, V(fx, fy, 40)) for p in fan], "#26282b", metal=0.2, rough=0.5, origin=V(fx, fy, 41.2))
 BIND.append(dict(entity="compressor_aan", type3d="rotate", object_id="buiten_ventilator", rotate=dict(axis="z", round_per_seconds=1)))
-grill = tube([V(fx + fr * math.cos(t), fy + fr * math.sin(t), 46.5) for t in np.linspace(0, 2 * math.pi, 65)], 1.6, 8)
-for rr in (fr * .66, fr * .33):
-    grill += tube([V(fx + rr * math.cos(t), fy + rr * math.sin(t), 46.5) for t in np.linspace(0, 2 * math.pi, 49)], .7, 6)
-grill += [cx(fx - fr, fx + fr, fy, .8, 46.5, 8), cy(fx, fy - fr, fy + fr, .8, 46.5, 8)]
-S.add("buitenunit_rooster", grill, "#8f949c", metal=0.6, rough=0.35)
+grill = tube([V(fx + fr * math.cos(t), fy + fr * math.sin(t), 46.5) for t in np.linspace(0, 2 * math.pi, 65)], 1.2, 8)
+for rr in (fr * .8, fr * .6, fr * .4, fr * .2):
+    grill += tube([V(fx + rr * math.cos(t), fy + rr * math.sin(t), 46.5) for t in np.linspace(0, 2 * math.pi, 49)], .4, 5)
+grill += [cx(fx - fr, fx + fr, fy, .45, 46.5, 6), cy(fx, fy - fr, fy + fr, .45, 46.5, 6)]
+S.add("buitenunit_rooster", grill, "#1c1d1f", metal=0.3, rough=0.5)
 c0, c1, cy0, cy1 = L.COMPRESSOR; ccx, crr = (c0 + c1) / 2, (c1 - c0) / 2
 S.add("buiten_compressor", [cy(ccx, cy0 + crr * .6, cy1 - crr * .6, crr, 45, 32, caps=False),
                             ellipsoid(V(ccx, cy0 + crr * .6, 45), crr, crr * .6, crr, 16, half=1),
@@ -548,7 +555,7 @@ for li, (x, n) in enumerate(LB.MOHL_LEDS):
     LEDS.append(dict(object=f"basisstation_led_{li}", kind=kind, room=room, name=n))
 
 # ================================================================= BEDIENINGSSCHERM & METERKAST
-S.add("bedieningsscherm", extrude_xy(rrect(25, 265, 397, 607, 10), -6, 6), "#2a2d33", metal=0.2, rough=0.4)
+S.add("bedieningsscherm", extrude_xy(rrect(25, 265, 397, 607, 10), -6, 6), "#ffffff", metal=0, rough=0.55)
 S.add("bedieningsscherm_toetsen", [bx(x0, x0 + 46, 565, 575, 6, 7.5) for x0 in (47, 97, 147, 197)] +
       [cz(x, 591, 6, 7.6, 8, 24) for x in (64, 90, 116)] + [cz(219, 591, 6, 7.8, 11, 28)], "#3f444c", rough=0.5)
 S.add("bedieningsscherm_led", [bx(188, 198, 590, 592.5, 6, 7)], "#22c55e")

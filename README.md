@@ -72,7 +72,9 @@ FTC6, via de ESPHome-integratie) en uit de kWh-meters in de meterkast die je al 
   knoppen + en − zoomen, de middelste knop zet de camera terug. Net als in 2D lopen er blokjes door de
   warm- en koudwaterleidingen als er getapt wordt en over de stroomkabels als een groep meer dan stand-by
   verbruikt. De kWh-meters zijn de HomeWizard-meters uit 2D, met het verbruik van vandaag, het vermogen,
-  de wifi-streepjes en het pulslampje. 3D volgt het lichte of donkere thema van het panel. Snelheid en
+  de wifi-streepjes en het pulslampje. De buitenunit lijkt op de echte SUZ-SWM60: een witte kast met
+  zwarte ventilator en typeplaatje, en door het ventilatorgat zie je de verdamper achterin. 3D volgt het
+  lichte of donkere thema van het panel, met dezelfde kleuren als 2D. Snelheid en
   gloed van de blokjes stel je in onder *Configureren*. Het model en three.js (samen ruim 4,5 MB)
   worden pas geladen als je de eerste keer op *3D* klikt; het panel onthoudt je keuze per apparaat.
   De losse kaart `ecodan-3d-card` (en `/config/www/ecodan3d/`) is daarvoor niet meer nodig.
