@@ -224,7 +224,11 @@ de stand af: pomp 1 uit het debiet (*Flow Rate*), de klep uit de bedrijfsmodus (
 de entiteitenlijst staat dan *afgeleid*. De kWh-meters worden gevonden als
 `sensor.meterkast_kwh_meter_ecodan_buitenunit_vermogen` en `..._binnenunit_vermogen`, of een
 sensor met `ecodan`, `buitenunit`/`binnenunit` en `vermogen`/`power` in de naam. Bij elke meter
-wordt de totaalteller (`..._energie_import`) gezocht. Het verbruik van vandaag is de teller nu
+wordt de totaalteller (`..._energie_import`) gezocht, en de wifi-sterkte van de meter (een sensor
+naast het vermogen met `wifi` in de naam, bij voorkeur `..._wifi_sterkte` in %, anders `..._wifi_rssi`
+in dBm). In het schema zijn de meters getekend als HomeWizard-kWh-meters: het display toont het
+verbruik van vandaag (kWh), het actuele vermogen en de wifi-sterkte als 0 tot 5 streepjes. Het rode
+pulslampje knippert één keer per Wh, dus sneller bij meer vermogen. Het verbruik van vandaag is de teller nu
 min de stand om middernacht uit de historie. Zonder teller rekent het panel met de
 5-minutenstatistiek van het vermogen.
 
@@ -302,7 +306,7 @@ Sleutels voor losse entiteiten (met de Asgard-naam waarop het panel zoekt):
 
 De servicewaarden van de buitenunit: `discharge`, `superheat`, `subcool`, `ou_liquid`, `ou_2phase`,
 `ou_suction`, `ou_heatsink`, `ou_surface`, `fan`, `starts` en `runtime`. De kWh-meters: `p_out`,
-`p_in`, `e_out` en `e_in`. Daarnaast:
+`p_in`, `e_out`, `e_in`, en de wifi-sterkte van de meters `wifi_out` en `wifi_in`. Daarnaast:
 
 | Sleutel | Uitleg |
 |---|---|
