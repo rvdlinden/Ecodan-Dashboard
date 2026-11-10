@@ -82,10 +82,11 @@ LABELS = [
     (40, 409, 5, "MITSUBISHI ELECTRIC", W, FRONT_CTRL, "l"),
 ]
 
+# namen bij de lussen, zoals in het 2D-schema: alleen de 1e verdieping heeft namen ("" = geen label)
 LOOP_NAMES = {
-    "2e": ["slaapkamer 4.1", "slaapkamer 4.2", "slaapkamer 4.3"],
+    "2e": ["", "", ""],
     "1e": ["overloop", "badkamer (hand: open)", "slaapkamer 1", "slaapkamer 2", "slaapkamer 3"],
-    "bg": ["woonkamer 1", "woonkamer 2", "woonkamer 3", "woonkamer 4", "woonkamer 5"],
+    "bg": ["", "", "", "", ""],
 }
 # lussen met een stelmotor (kraan) op de verdeler, zoals in het dashboard
 LOOP_ACTUATOR = {("1e", 1), ("1e", 2), ("1e", 3), ("1e", 4)}   # badkamer (handbediening, altijd open) + slaapkamer 1-3

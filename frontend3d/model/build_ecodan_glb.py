@@ -616,6 +616,7 @@ add_label(C_["x0"] + 3, C_["y_top"] + 5, 5, "aanvoer °C", "grey", 0.5, "l")
 for fl, names in LB.LOOP_NAMES.items():
     n_ = len(names); zw = (L.MEANDER_X[1] - L.MEANDER_X[0]) / n_
     for i, nm_ in enumerate(names):
+        if not nm_: continue                                  # lus zonder naam, zoals in 2D
         xc = L.MEANDER_X[0] + i * zw + zw / 2 - 1          # bordje voor de eigen meanderzone
         add_label(xc, L.FLOOR_TOP[fl] - 6, 5.5 if len(nm_) < 16 else 4.0, nm_, "white", L.FLOOR_Z[1] + 1, "c")
 for x, n in LB.MOHL_LEDS: add_label(x, 699, 5.5, n, "grey", LB.FRONT_MOHL, "c")
