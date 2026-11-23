@@ -37,6 +37,8 @@ TEXTS = {
     "kwh_binnen":         (376, 406, 787, 799, 6, "mono"),
     "kwh_buiten_tekst":   (109, 127, 828, 840, 0, "mono"),
     "stooklijn_buiten":   (649, 671, 763, 777, 0, "mono"),
+    # retourtemperatuur per lus van de 1e verdieping (DS18B20 bij de verdeler), boven het naambordje van de lus
+    **{f"ret_1e_{i}": (829.8 + 47.6 * i, 849.8 + 47.6 * i, 421, 432, 0, "big") for i in range(5)},
     "stooklijn_doel":     (782, 809, 763, 777, 0, "mono"),
     "stooklijn_ftc6":     (871, 898, 763, 777, 0, "mono"),
     "stooklijn_param":    (880, 1050, 740, 750, 0, "mono"),

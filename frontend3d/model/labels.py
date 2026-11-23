@@ -88,7 +88,7 @@ LABELS = [
 # namen bij de lussen, zoals in het 2D-schema: alleen de 1e verdieping heeft namen ("" = geen label)
 LOOP_NAMES = {
     "2e": ["", "", ""],
-    "1e": ["overloop", "badkamer (hand: open)", "slaapkamer 1", "slaapkamer 2", "slaapkamer 3"],
+    "1e": ["overloop", "badkamer", "slaapkamer 1", "slaapkamer 2", "slaapkamer 3"],
     "bg": ["", "", "", "", ""],
 }
 # lussen met een stelmotor (kraan) op de verdeler, zoals in het dashboard
@@ -114,4 +114,5 @@ UNITS = {"buiten_temp": "°C", "heetgas": "°C", "compressor_hz": "Hz", "wifi": 
          "tapvoeler": "°C", "thw5a": "°C", "thw5b": "°C", "thw1": "°C", "platenwisselaar": "°C", "th2": "°C",
          "thw2": "°C", "debiet": "L/min", "slaapkamer_4": "°C", "slaapkamer_1": "°C", "slaapkamer_2": "°C",
          "slaapkamer_3": "°C", "woonkamer": "°C", "basisstation": "W", "vermogen_buiten": "W",
-         "kwh_buiten": "kWh", "vermogen_binnen": "W", "kwh_binnen": "kWh"}
+         "kwh_buiten": "kWh", "vermogen_binnen": "W", "kwh_binnen": "kWh",
+         **{f"ret_1e_{i}": "°C" for i in range(5)}}

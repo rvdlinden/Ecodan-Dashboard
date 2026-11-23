@@ -21,7 +21,7 @@ const HL = new THREE.Color('#3b82f6');   // markering van het gekozen onderdeel
 
 // Welk onderdeel van het 2D-schema (data-c) hoort bij een object in het model; de eerste regel die past wint.
 const PICK = [
-  [/^txt_buiten_temp$/, 'th7'], [/^(txt_compressor_hz|buiten_compressor)$/, 'comp'], [/^(buitenunit_|buiten_ventilator)/, 'outdoor'],
+  [/^txt_ret_/, 'manifold'], [/^txt_buiten_temp$/, 'th7'], [/^(txt_compressor_hz|buiten_compressor)$/, 'comp'], [/^(buitenunit_|buiten_ventilator)/, 'outdoor'],
   [/^txt_heetgas$/, 'heetgas'], [/^pipe_r32/, 'refr'], [/^txt_th2$/, 'th2'], [/^(platenwisselaar|txt_platenwisselaar)/, 'hex'],
   [/^(ftc6_|txt_wifi$)/, 'ftc'], [/^(txt_in1|basisstation|txt_basisstation)/, 'mohlenhoff'],
   [/^(bh1_|txt_bh1$)/, 'bh1'], [/^(pomp1_|txt_pomp1$|kraan_14$)/, 'pump1'], [/^txt_thw1$/, 'thw1'], [/^klep_3weg/, 'valve'],
