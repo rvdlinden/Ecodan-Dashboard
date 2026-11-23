@@ -97,6 +97,8 @@ TEXT_Z.update(buiten_temp=(LB.FRONT_UNIT, "#3b3f46", "#ffffff", "sans-serif"),
               kwh_binnen=(LB.FRONT_METER + 0.5, "#b9c4b5", "#111111", "monospace"))
 # de kWh-meters krijgen een eigen scherm (zoals de HomeWizard in 2D), dus geen losse tekstvlakken
 METER_KEYS = ("vermogen_buiten", "kwh_buiten", "vermogen_binnen", "kwh_binnen")
+# retour per lus: vóór de vloer, bij de naambordjes van de lussen
+TEXT_Z.update({k: (L.FLOOR_Z[1] + 1, BG, "#ffffff", "sans-serif") for k in L.TEXTS if k.startswith("ret_")})
 TEXT_KEYS = [k for k in L.TEXTS if k not in ("kwh_buiten_tekst", "datum_tijd", "scherm_tapwater", "stooklijn_verschuiving") + METER_KEYS]
 
 # ================================================================= texture-atlas (labels + schermpjes)

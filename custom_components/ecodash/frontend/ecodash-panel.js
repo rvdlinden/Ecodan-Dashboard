@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.22.0";
+const ECODASH_VERSION = "1.23.0";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -98,8 +98,13 @@ const CORE_KEYS = ["buiten", "freq", "aanvoer", "retour", "tank", "flow", "opsta
 const DEFAULT_FLOORS = [
   { naam: "2E VERDIEPING", hoofdactuator: true, lussen: 3,
     kamers: [{ naam: "Slaapkamer 4", entity: "sensor.kantoor_kantoor_thermo_hygro_co2_temperatuur" }] },
-  { naam: "1E VERDIEPING", lussen: [{ naam: "Overloop", actuator: false }, { naam: "Badkamer", via: "Slaapkamer 1", handmatig: true },
-    "Slaapkamer 1", "Slaapkamer 2", "Slaapkamer 3"], kamers: [
+  // retour: DS18B20 op de retourleiding van de lus (via een Shelly), van links naar rechts op de verdeler
+  { naam: "1E VERDIEPING", lussen: [
+    { naam: "Overloop", actuator: false, retour: "sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_gang" },
+    { naam: "Badkamer", via: "Slaapkamer 1", handmatig: true, retour: "sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_badkamer" },
+    { naam: "Slaapkamer 1", retour: "sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_slaapkamer" },
+    { naam: "Slaapkamer 2", retour: "sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_kinderkamer" },
+    { naam: "Slaapkamer 3", retour: "sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_hobbykamer" }], kamers: [
     { naam: "Slaapkamer 1", entity: "sensor.slaapkamer_slaapkamer_thermo_hygro_co2_temperatuur" },
     { naam: "Slaapkamer 2", entity: "sensor.kinderkamer_kinderkamer_thermo_hygro_co2_temperatuur" },
     { naam: "Slaapkamer 3", entity: "sensor.hobbykamer_thermo_hygro_temperature" }] },
@@ -241,6 +246,7 @@ function resolveEntities(hass, cfg) {
     }),
   }));
   r.floors.forEach((f, fi) => f.kamers.forEach((k, j) => { r[`room_${fi}_${j}`] = k.ent; }));
+  r.floors.forEach((f, fi) => f.loops.forEach((l, i) => { if (l.ret) r[`lret_${fi}_${i}`] = l.ret; }));
   // welke kamerthermostaat stuurt de aandrijving van een lus (via: de badkamer volgt slaapkamer 1)
   r.floors.forEach(f => f.loops.forEach(l => {
     const j = f.kamers.findIndex(k => slug(k.naam) === slug(l.via || l.naam)); l.ctl = j < 0 ? null : j;
@@ -263,7 +269,9 @@ function loopsOf(f) {
   const list = Array.isArray(l) && l.length ? l : Array.from({ length: clamp(Math.round(+l) || 5, 1, 8) }, () => ({}));
   return { main, loops: list.slice(0, 8).map(x => {
     const o = typeof x === "object" && x ? x : { naam: x };
-    return { naam: String(o.naam || o.name || ""), via: String(o.via || ""), act: !!(o.actuator ?? !main), hand: !!(o.handmatig ?? o.manual) };
+    const ret = o.retour ?? o.return;
+    return { naam: String(o.naam || o.name || ""), via: String(o.via || ""), act: !!(o.actuator ?? !main), hand: !!(o.handmatig ?? o.manual),
+             ret: typeof ret === "string" && ret.includes(".") ? ret : null };
   }) };
 }
 
@@ -384,7 +392,8 @@ function floorsSvg(floors) {
         + `<path d="M896,${y - 4} H1012 a4,4 0 0 1 0,8" fill="none" stroke="url(#loopOut)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
         + `<path d="M1012,${y + 4} H896" fill="none" stroke="url(#loopBack)" stroke-width="2.4" stroke-linecap="round" class="b-heat"/>`
         + `<path class="fl f-heat thin" d="${d}"/></g>`;
-      if (l.naam && step >= 20) s += `<text class="t loop" x="902" y="${y - 8}">${esc(l.naam.toLowerCase())}${l.hand ? " (hand: open)" : l.via ? ` (via ${esc(l.via.toLowerCase())})` : ""}</text>`;
+      if (l.naam && step >= 20) s += `<text class="t loop" x="902" y="${y - 8}">${esc(l.naam.toLowerCase())}${l.hand || l.ret ? "" : l.via ? ` (via ${esc(l.via.toLowerCase())})` : ""}</text>`;
+      if (l.ret && step >= 20) s += `<text class="val sm lret" id="lr-${fi}-${i}" x="1012" y="${y - 8}" text-anchor="end"></text>`;
     });
     // lus zonder aandrijving: alleen het handwiel op de verdeler; er loopt eventueel een stuurdraad achterlangs
     // stuurdraad van het basisstation (verzamelleiding op x1076) naar de aandrijving(en)
@@ -1136,7 +1145,7 @@ svg.schema{display:block;width:100%;height:auto;aspect-ratio:1200/1012;font-fami
 .band{fill:url(#bandGrad);stroke:rgba(255,255,255,.07)}
 .t{fill:var(--ink);font-size:12px}
 .t.s{font-size:10.5px;fill:var(--muted)}
-.t.loop{font-size:9px;fill:var(--muted)}
+.t.loop{font-size:9px;fill:var(--muted)} .val.lret{font-size:9px}
 .lus.dicht .b-heat{opacity:.35}
 .lus.dicht .fl, .ff.dicht .fl{display:none}
 .kraan.open{stroke:var(--hot);stroke-width:2}
@@ -1462,7 +1471,20 @@ function mountDashboard(host, root) {
   const rooms = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => ({ k: `room_${fi}_${j}`, n: r.naam, c: "tstat",
     x: "Temperatuur van de slimme meter naast de kamerthermostaat (Möhlenhoff). De thermostaat zelf is niet slim en niet zichtbaar in Home Assistant; de ingestelde temperatuur komt uit Configureren en staat in het display-icoon in het schema.",
     now: X => { const v = X.rooms[fi]?.[j]; return v?.t == null ? "" : `${f.naam.charAt(0) + f.naam.slice(1).toLowerCase()}: gemeten ${fmt(v.t, 1)} °C` + (r.sp == null ? "." : `, ingesteld ${fmt(r.sp, 1)} °C. ` + vsSet(v, r.sp)); } })));
-  const groups = rooms.length ? [...G.slice(0, 5), { title: "Kamertemperaturen", note: "Gemeten door de slimme meters naast de kamerthermostaten; de ingestelde waarde staat in het schema in het display-icoon.", items: rooms }, ...G.slice(5)] : G;
+  const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  const rets = R.floors.flatMap((f, fi) => f.loops.map((l, i) => [l, i]).filter(([l]) => l.ret).map(([l, i]) => ({
+    k: `lret_${fi}_${i}`, n: `Retour ${(l.naam || `lus ${i + 1}`).toLowerCase()} (${cap1(f.naam)})`, c: "manifold",
+    x: "DS18B20 op de retourleiding van deze lus, bij de verdeler. Zolang de vloerverwarming draait en de kraan open staat, is het verschil met de aanvoer (ΔT) de warmte die de lus afgeeft: een veel kleiner verschil dan bij de andere lussen betekent te veel doorstroming, een veel groter verschil te weinig. Staat de lus dicht of draait de pomp niet, dan koelt de leiding af naar de temperatuur van de vloer.",
+    now: X => {
+      const v = X.loopRet[fi]?.[i]; if (v == null) return "";
+      const open = loopsOpen(X)[fi]?.[i], flowing = X.pump1 && !X.dhw && open;
+      return flowing && X.aanvoer != null ? `Aanvoer ${deg(X.aanvoer)}, retour ${deg(v)}: ΔT ${fmt(X.aanvoer - v, 1)} °C.`
+        : `${!X.pump1 || X.dhw ? "De vloerverwarming draait nu niet" : "De kraan van deze lus staat dicht"}: de leiding koelt af, dit is geen retourtemperatuur.`;
+    } })));
+  const groups = [...G.slice(0, 5),
+    ...(rooms.length ? [{ title: "Kamertemperaturen", note: "Gemeten door de slimme meters naast de kamerthermostaten; de ingestelde waarde staat in het schema in het display-icoon.", items: rooms }] : []),
+    ...(rets.length ? [{ title: "Retour vloerverwarming", note: "Voelers op de retourleidingen bij de verdeler, per lus. Met de aanvoer geven ze de ΔT per lus.", items: rets }] : []),
+    ...G.slice(5)];
   $("#groups").innerHTML = groups.map(g => `<div class="group"><h3>${g.title}</h3><p class="gnote">${g.note}</p><ul class="ents">` +
     g.items.map(e => { byKey[e.k] = e;
       return `<li><button type="button" data-e="${e.k}"><span class="ename">${e.n}</span><span class="evalue" data-v="${e.k}"></span><span class="eid" data-id="${e.k}"></span></button></li>`; }).join("") +
@@ -1543,6 +1565,8 @@ function mountDashboard(host, root) {
     // kamers
     // heat: de kraan van de kamer staat open. Bij een climate-entiteit uit hvac_action, anders afgeleid (zie ROOM_HYST);
     // null = onbekend (geen meting of geen ingestelde waarde)
+    // retourtemperatuur per lus (null = geen voeler)
+    X.loopRet = R.floors.map(f => f.loops.map(l => (l.ret ? num(l.ret) : null)));
     X.rooms = R.floors.map((f, fi) => f.kamers.map((r, j) => {
       const s = S(r.ent); if (!ok(s)) return null;
       const climate = r.ent.startsWith("climate."), a = s.attributes;
@@ -1725,6 +1749,7 @@ function mountDashboard(host, root) {
     R.floors.forEach((f, fi) => {
       const open = loopOpen[fi];
       f.loops.forEach((l, i) => $$(`.lus[data-l="${fi}-${i}"]`).forEach(el => el.classList.toggle("dicht", !open[i])));
+      f.loops.forEach((l, i) => { if (l.ret) setT(`lr-${fi}-${i}`, deg(X.loopRet[fi][i]), X.pump1 && !X.dhw && open[i] ? "" : "off"); });
       $$(`.kraan[data-k^="${fi}-"]`).forEach(el => { const k = el.dataset.k.split("-")[1];
         el.classList.toggle("open", k === "m" ? open.some(Boolean) : !!open[+k]); });
       f.kamers.forEach((r, j) => {
@@ -1873,6 +1898,14 @@ function mountDashboard(host, root) {
         return `${esc(cap(f.naam))} ${!n ? "dicht" : n === f.loops.length ? "alle lussen" : names.length === n ? esc(names.join(", ")) : `${n} van ${f.loops.length} lussen`}`;
       }).join(" · ") + ".");
     }
+    if (X.pump1 && !X.dhw) {
+      const lo = loopsOpen(X);
+      R.floors.forEach((f, fi) => {
+        const r = f.loops.map((l, i) => [l, X.loopRet[fi]?.[i], lo[fi]?.[i]]).filter(([l, v]) => l.ret && v != null);
+        if (r.length) li.push(`<b>Retour ${esc(f.naam.charAt(0) + f.naam.slice(1).toLowerCase())}</b> (aanvoer ${deg(X.aanvoer)}): `
+          + r.map(([l, v, o]) => `${esc(l.naam.toLowerCase())} ${fmt(v, 1)} °C${o ? (X.aanvoer != null ? ` (ΔT ${fmt(X.aanvoer - v, 1)})` : "") : " (dicht)"}`).join(" · ") + ".");
+      });
+    }
     const kamers = R.floors.flatMap((f, fi) => f.kamers.map((r, j) => [r.naam, X.rooms[fi]?.[j]?.t, r.sp])).filter(([, t]) => t != null);
     if (kamers.length) li.push(`<b>Kamers (gemeten / ingesteld):</b> ${kamers.map(([n, t, sp]) => `${esc(n)} ${fmt(t, 1)}${sp == null ? "" : " / " + fmt(sp, 1)} °C`).join(" · ")}.`);
     if (X.hotDraw && X.drawSrc === "voeler") li.push(`<b>Er wordt warm water getapt.</b> `
@@ -1987,6 +2020,7 @@ function mountDashboard(host, root) {
     for (const [k, [fi, j]] of Object.entries(roomAt)) {
       const v = X.rooms[fi]?.[j]; text[k] = f1(v?.t); alpha[k] = R.floors[fi].kamers[j].sp; heat[k] = v?.heat ?? null;
     }
+    for (const [fl, fi] of Object.entries(MFLOOR)) (X.loopRet[fi] || []).forEach((v, i) => { text[`ret_${fl}_${i}`] = f1(v); });
     // aandrijvingen in het model: stelmotor_<verdieping>_<lus> of _zone (één op de aanvoer); rood = kraan open, zoals in 2D
     const act = {};
     for (const [fl, fi] of Object.entries(MFLOOR)) {
@@ -2022,7 +2056,9 @@ function mountDashboard(host, root) {
         model: asset("ecodash-3d.glb"), labelsLight: asset("ecodash-3d-labels-licht.png"),
         dark: host.classList.contains("dark"), flowSpeed: num3(cfg.snelheid_3d, 0.3), glow: num3(cfg.gloed_3d, 1),
         onPick: (c, textKey) => {
-          const k = textKey && (TEXT_ENT[textKey] || (roomAt[textKey] ? `room_${roomAt[textKey][0]}_${roomAt[textKey][1]}` : null));
+          const rm = textKey && /^ret_(2e|1e|bg)_(\d+)$/.exec(textKey);
+          const k = textKey && (TEXT_ENT[textKey] || (roomAt[textKey] ? `room_${roomAt[textKey][0]}_${roomAt[textKey][1]}` : null)
+            || (rm ? `lret_${MFLOOR[rm[1]]}_${rm[2]}` : null));
           if (k && byKey[k]) showEnt(k); else if (c && C[c]) showComp(c); else clearSel();
         },
       });
@@ -2190,7 +2226,7 @@ function mountDashboard(host, root) {
   /* bijwerken: alleen als een relevante entiteit verandert, hooguit één keer per frame */
   let raf = 0;
   const watched = () => [...Object.keys(ENT), "opmode", "p_out", "p_in", "e_out", "e_in", "tap", "vraag", "mpower", "wifi_out", "wifi_in"].map(k => R[k])
-    .concat(R.floors.flatMap(f => f.kamers.map(r => r.ent))).filter(Boolean);
+    .concat(R.floors.flatMap(f => f.kamers.map(r => r.ent)), R.floors.flatMap(f => f.loops.map(l => l.ret))).filter(Boolean);
   let watchIds = watched(), nStates = Object.keys(host._hass.states).length;
   const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; update(); }); };
   function update() {

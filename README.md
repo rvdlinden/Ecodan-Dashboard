@@ -291,7 +291,18 @@ Een lus zonder eigen aandrijving staat in het schema met een rond handwiel op de
 override `verdiepingen` geef je per verdieping `hoofdactuator: true` (één aandrijving op de aanvoer)
 en `lussen`: een aantal of een lijst van namen of `{naam, actuator, via}`. Zonder `hoofdactuator`
 heeft elke lus een eigen aandrijving, tenzij `actuator: false`. Met `handmatig: true` staat de
-aandrijving op handbediening en altijd open. Zonder `lussen` tekent het panel 5
+aandrijving op handbediening en altijd open. Met `retour: sensor.x` koppel je een temperatuurvoeler op de
+retourleiding van de lus.
+
+**Retourtemperatuur per lus.** Op de verdeler van de 1e verdieping zitten vijf DS18B20-voelers (via een
+Shelly) op de retourleidingen, van links naar rechts: overloop
+(`sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_gang`), badkamer (`…_badkamer`), slaapkamer 1
+(`…_slaapkamer`), slaapkamer 2 (`…_kinderkamer`) en slaapkamer 3 (`…_hobbykamer`). De temperatuur staat in
+2D rechts op de regel van de lus en in 3D boven het naambordje. Hij is grijs als er geen water door de lus
+gaat (kraan dicht, tapwater of pomp uit): dan koelt de leiding alleen af. In de entiteitenlijst staan ze
+onder *Retour vloerverwarming*, met de ΔT ten opzichte van de aanvoer, en bij vloerverwarming staat in
+*Wat gebeurt er nu?* de retour en ΔT per lus. Een lus met een veel kleinere ΔT dan de andere krijgt te
+veel water, een veel grotere ΔT te weinig: zo zie je hoe de verdeler is ingeregeld. Zonder `lussen` tekent het panel 5
 lussen.
 
 ### Overrides
@@ -349,7 +360,7 @@ verdiepingen:
   - naam: 1e verdieping
     lussen:
       - {naam: Overloop, actuator: false}
-      - {naam: Badkamer, via: Slaapkamer 1, handmatig: true}
+      - {naam: Badkamer, via: Slaapkamer 1, handmatig: true, retour: sensor.badkamer_retour}
       - Slaapkamer 1
       - Slaapkamer 2
       - Slaapkamer 3
