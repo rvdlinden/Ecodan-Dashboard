@@ -4,7 +4,7 @@
  * Asgard (ESPHome op de CN105 van de FTC6) en de kWh-meters in de meterkast. Alle data via de
  * HA-sessie (hass.states en hass.callWS), dus zonder tokens of losse servers.
  * ===================================================================== */
-const ECODASH_VERSION = "1.23.0";
+const ECODASH_VERSION = "1.23.1";
 
 /* ------------------------- entiteiten ------------------------------ */
 // Per sleutel: domein en achtervoegsel na het voorvoegsel, zoals de Asgard-firmware (esphome-ecodan-hp, Engelse labels) ze noemt.
@@ -100,7 +100,7 @@ const DEFAULT_FLOORS = [
     kamers: [{ naam: "Slaapkamer 4", entity: "sensor.kantoor_kantoor_thermo_hygro_co2_temperatuur" }] },
   // retour: DS18B20 op de retourleiding van de lus (via een Shelly), van links naar rechts op de verdeler
   { naam: "1E VERDIEPING", lussen: [
-    { naam: "Overloop", actuator: false, retour: "sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_gang" },
+    { naam: "Overloop", actuator: false, retour: "sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_overloop" },
     { naam: "Badkamer", via: "Slaapkamer 1", handmatig: true, retour: "sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_badkamer" },
     { naam: "Slaapkamer 1", retour: "sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_slaapkamer" },
     { naam: "Slaapkamer 2", retour: "sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_kinderkamer" },

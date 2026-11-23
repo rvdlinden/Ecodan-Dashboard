@@ -296,7 +296,7 @@ retourleiding van de lus.
 
 **Retourtemperatuur per lus.** Op de verdeler van de 1e verdieping zitten vijf DS18B20-voelers (via een
 Shelly) op de retourleidingen, van links naar rechts: overloop
-(`sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_gang`), badkamer (`…_badkamer`), slaapkamer 1
+(`sensor.hobbykamer_hobbykamer_vloerverwarming_temperatuur_overloop`), badkamer (`…_badkamer`), slaapkamer 1
 (`…_slaapkamer`), slaapkamer 2 (`…_kinderkamer`) en slaapkamer 3 (`…_hobbykamer`). De temperatuur staat in
 2D rechts op de regel van de lus en in 3D boven het naambordje. Hij is grijs als er geen water door de lus
 gaat (kraan dicht, tapwater of pomp uit): dan koelt de leiding alleen af. In de entiteitenlijst staan ze
